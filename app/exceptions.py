@@ -1,2 +1,2 @@
-class DoesNotExist:
+class DoesNotExist(BaseException):
     pass
