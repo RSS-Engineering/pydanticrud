@@ -1,24 +1,32 @@
+from typing import Optional
+from uuid import uuid4
+
 import boto3
+from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from app.config import AWS_REGION, AWS_DYNAMO_ENDPOINT
-from app.exceptions import DoesNotExist
+from app.exceptions import DoesNotExist, RevisionMismatch
 
 dynamodb = boto3.resource(
     'dynamodb',
     region_name=AWS_REGION,
     endpoint_url=AWS_DYNAMO_ENDPOINT
 )
+
+# https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/dynamodb.html#valid-dynamodb-types
 DYNAMO_TYPE_MAP = {
     'int': 'N',
-    'float': 'N',
+    'decimal': 'N',
     'double': 'N',
-    'uuid': 'B'
+    'bool': 'BOOL',
 }
 
 
 class DynamoBaseModel(BaseModel):
+    revision: Optional[str]
+
     @classmethod
     def exists(cls):
         table = cls.get_table()
@@ -72,11 +80,22 @@ class DynamoBaseModel(BaseModel):
         return cls.parse_obj(resp['Item'])
 
     def save(self) -> bool:
-        res = self.get_table().put_item(
-            Item=self.dict()
-        )
+        hash_key = self.Config.hash_key
+        data = self.dict()
+        old_revision = data.pop('revision')
+        new_revision = data['revision'] = str(uuid4())
+
+        condition = Key(hash_key).eq(getattr(self, hash_key))
+        if isinstance(old_revision, str):
+            condition = condition and Attr('revision').eq(old_revision)
+        else:
+            condition = condition and Attr('revision').not_exists()
 
         try:
-            return res['ResponseMetadata']['HTTPStatusCode'] == 200
-        except KeyError:
-            return False
+            res = self.get_table().put_item(Item=data, ConditionExpression=condition)
+            if res['ResponseMetadata']['HTTPStatusCode'] == 200:
+                self.revision = new_revision
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                raise RevisionMismatch('Provided revision is out of date' if old_revision else 'Must provide a revision')
+            raise e
