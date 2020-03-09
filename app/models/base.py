@@ -1,5 +1,5 @@
 from typing import Optional
-from uuid import uuid4
+from uuid import uuid4, UUID
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -7,7 +7,7 @@ from botocore.exceptions import ClientError
 from pydantic import BaseModel
 
 from ..config import AWS_REGION, AWS_DYNAMO_ENDPOINT
-from ..cascade_types import UUID_STR, FLAG_VALUE_TYPE
+from ..cascade_types import FLAG_VALUE_TYPE
 from ..exceptions import DoesNotExist, RevisionMismatch
 
 dynamodb = boto3.resource(
@@ -26,7 +26,7 @@ DYNAMO_TYPE_MAP = {
 
 
 class DynamoBaseModel(BaseModel):
-    revision: Optional[str]
+    revision: Optional[UUID]
 
     @classmethod
     def exists(cls):
@@ -64,10 +64,10 @@ class DynamoBaseModel(BaseModel):
         return table
 
     @classmethod
-    def _build_update_condition(cls, hash_key, key_value, revision):
+    def _build_update_condition(cls, hash_key: str, key_value: FLAG_VALUE_TYPE, revision: UUID):
         condition = Key(hash_key).eq(key_value)
-        if isinstance(revision, str):
-            condition = condition and Attr('revision').eq(revision)
+        if isinstance(revision, UUID):
+            condition = condition and Attr('revision').eq(str(revision))
         else:
             condition = condition and Attr('revision').not_exists()
         return condition
@@ -90,8 +90,8 @@ class DynamoBaseModel(BaseModel):
         return cls.parse_obj(resp['Item'])
 
     @classmethod
-    def update_value(cls, key: str, field: str, value: FLAG_VALUE_TYPE, revision: Optional[str]) -> UUID_STR:
-        new_revision = str(uuid4())
+    def update_value(cls, key: str, field: str, value: FLAG_VALUE_TYPE, revision: Optional[UUID]) -> UUID:
+        new_revision = uuid4()
         hash_key = cls.Config.hash_key
 
         condition = cls._build_update_condition(hash_key, key, revision)
@@ -101,14 +101,18 @@ class DynamoBaseModel(BaseModel):
                 Key={
                     hash_key: key
                 },
-                AttributeUpdates={
-                    'revision': new_revision,
-                    field: value
+                UpdateExpression=f"SET revision = :nr, #f = :v",
+                ExpressionAttributeNames={
+                    '#f': 'field',
+                },
+                ExpressionAttributeValues={
+                    ':nr': str(new_revision),
+                    ':v': value
                 },
                 ConditionExpression=condition
             )
             if res['ResponseMetadata']['HTTPStatusCode'] == 200:
-                return revision
+                return new_revision
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
                 raise RevisionMismatch('Provided revision is out of date' if revision else 'Must provide a revision')
