@@ -64,17 +64,32 @@ class DynamoBaseModel(BaseModel):
         return table
 
     @classmethod
-    def _build_update_condition(cls, hash_key: str, key_value: FLAG_VALUE_TYPE, revision: UUID):
+    def _build_update_condition(cls,
+                                hash_key: str,
+                                key_value: FLAG_VALUE_TYPE,
+                                revision: UUID,
+                                field: Optional[str] = None,
+                                value: Optional[FLAG_VALUE_TYPE] = None,
+                                allow_create: bool = False):
         condition = Key(hash_key).eq(key_value)
+        attr = Attr('revision')
         if isinstance(revision, UUID):
-            condition = condition and Attr('revision').eq(str(revision))
+            condition = condition and attr.eq(str(revision))
+            if None not in (field, value):
+                condition = condition and Attr(field).ne(value)
+        elif allow_create:
+            condition = condition and attr.not_exists()
         else:
-            condition = condition and Attr('revision').not_exists()
+            condition = False
         return condition
 
     @classmethod
+    def get_table_name(cls) -> str:
+        return cls.Config.title.lower()
+
+    @classmethod
     def get_table(cls) -> dynamodb.Table:
-        return dynamodb.Table(cls.Config.title.lower())
+        return dynamodb.Table(cls.get_table_name())
 
     @classmethod
     def get(cls, item_key: str):
@@ -94,7 +109,7 @@ class DynamoBaseModel(BaseModel):
         new_revision = uuid4()
         hash_key = cls.Config.hash_key
 
-        condition = cls._build_update_condition(hash_key, key, revision)
+        condition = cls._build_update_condition(hash_key, key, revision, field, value)
 
         try:
             res = cls.get_table().update_item(
@@ -103,7 +118,7 @@ class DynamoBaseModel(BaseModel):
                 },
                 UpdateExpression=f"SET revision = :nr, #f = :v",
                 ExpressionAttributeNames={
-                    '#f': 'field',
+                    '#f': field,
                 },
                 ExpressionAttributeValues={
                     ':nr': str(new_revision),
@@ -115,7 +130,11 @@ class DynamoBaseModel(BaseModel):
                 return new_revision
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                raise RevisionMismatch('Provided revision is out of date' if revision else 'Must provide a revision')
+                item = cls.get(key)
+                if getattr(item, field) == value:
+                    return revision
+                raise RevisionMismatch(
+                    'Provided revision is out of date' if revision else 'Must provide a revision')
             raise e
 
     def save(self) -> bool:
@@ -124,7 +143,7 @@ class DynamoBaseModel(BaseModel):
         old_revision = data.pop('revision')
         new_revision = data['revision'] = str(uuid4())
 
-        condition = self._build_update_condition(hash_key, getattr(self, hash_key), old_revision)
+        condition = self._build_update_condition(hash_key, getattr(self, hash_key), old_revision, allow_create=True)
 
         try:
             res = self.get_table().put_item(Item=data, ConditionExpression=condition)
