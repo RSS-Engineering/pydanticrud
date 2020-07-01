@@ -25,9 +25,32 @@ DYNAMO_TYPE_MAP = {
 }
 
 
-class DynamoBaseModel(BaseModel):
-    revision: Optional[UUID]
+def build_update_condition(hash_key: str, key_value: FLAG_VALUE_TYPE):
+    return Key(hash_key).eq(key_value)
 
+
+def build_update_condition_with_revision(
+        hash_key: str,
+        key_value: FLAG_VALUE_TYPE,
+        revision: UUID,
+        field: Optional[str] = None,
+        value: Optional[FLAG_VALUE_TYPE] = None,
+        allow_create: bool = False):
+    condition = build_update_condition(hash_key, key_value)
+
+    attr = Attr('revision')
+    if isinstance(revision, UUID):
+        condition = condition and attr.eq(str(revision))
+        if None not in (field, value):
+            condition = condition and Attr(field).ne(value)
+    elif allow_create:
+        condition = condition and attr.not_exists()
+    else:
+        condition = False
+    return condition
+
+
+class UnversionedBaseModel(BaseModel):
     @classmethod
     def exists(cls):
         table = cls.get_table()
@@ -35,6 +58,16 @@ class DynamoBaseModel(BaseModel):
             return table.table_status == 'ACTIVE'
         except ClientError:
             return False
+
+    @classmethod
+    def query(cls, expression):
+        table = cls.get_table()
+        res = table.scan(
+            FilterExpression=expression
+        )
+
+        return [cls.parse_obj(i) for i in res['Items']]
+
 
     @classmethod
     def create_table(cls, wait=False) -> dynamodb.Table:
@@ -64,26 +97,6 @@ class DynamoBaseModel(BaseModel):
         return table
 
     @classmethod
-    def _build_update_condition(cls,
-                                hash_key: str,
-                                key_value: FLAG_VALUE_TYPE,
-                                revision: UUID,
-                                field: Optional[str] = None,
-                                value: Optional[FLAG_VALUE_TYPE] = None,
-                                allow_create: bool = False):
-        condition = Key(hash_key).eq(key_value)
-        attr = Attr('revision')
-        if isinstance(revision, UUID):
-            condition = condition and attr.eq(str(revision))
-            if None not in (field, value):
-                condition = condition and Attr(field).ne(value)
-        elif allow_create:
-            condition = condition and attr.not_exists()
-        else:
-            condition = False
-        return condition
-
-    @classmethod
     def get_table_name(cls) -> str:
         return cls.Config.title.lower()
 
@@ -104,12 +117,30 @@ class DynamoBaseModel(BaseModel):
 
         return cls.parse_obj(resp['Item'])
 
+    def save(self) -> bool:
+        hash_key = self.Config.hash_key
+        key = getattr(self, hash_key)
+        data = self.dict()
+
+        try:
+            self.get(key)  # Just to check if it exists
+            condition = build_update_condition(hash_key, key)
+            self.get_table().put_item(Item=data, ConditionExpression=condition)
+            return False
+        except DoesNotExist:
+            self.get_table().put_item(Item=data)
+            return True
+
+
+class VersionedBaseModel(UnversionedBaseModel):
+    revision: Optional[UUID]
+
     @classmethod
     def update_value(cls, key: str, field: str, value: FLAG_VALUE_TYPE, revision: Optional[UUID]) -> UUID:
         new_revision = uuid4()
         hash_key = cls.Config.hash_key
 
-        condition = cls._build_update_condition(hash_key, key, revision, field, value)
+        condition = build_update_condition_with_revision(hash_key, key, revision, field, value)
 
         try:
             res = cls.get_table().update_item(
@@ -141,9 +172,15 @@ class DynamoBaseModel(BaseModel):
         hash_key = self.Config.hash_key
         data = self.dict()
         old_revision = data.pop('revision')
-        new_revision = data['revision'] = str(uuid4())
+        new_revision = uuid4()
+        data['revision'] = str(new_revision)
 
-        condition = self._build_update_condition(hash_key, getattr(self, hash_key), old_revision, allow_create=True)
+        condition = build_update_condition_with_revision(
+            hash_key,
+            getattr(self, hash_key),
+            old_revision,
+            allow_create=True
+        )
 
         try:
             res = self.get_table().put_item(Item=data, ConditionExpression=condition)
