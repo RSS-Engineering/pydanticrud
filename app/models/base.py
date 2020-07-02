@@ -131,6 +131,14 @@ class UnversionedBaseModel(BaseModel):
             self.get_table().put_item(Item=data)
             return True
 
+    @classmethod
+    def delete(cls, item_key: str):
+        cls.get_table().delete_item(
+            Key={
+                cls.Config.hash_key: item_key
+            }
+        )
+
 
 class VersionedBaseModel(UnversionedBaseModel):
     revision: Optional[UUID]
