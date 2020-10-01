@@ -177,6 +177,9 @@ class VersionedBaseModel(UnversionedBaseModel):
             raise e
 
     def save(self) -> bool:
+        # Parse the new obj to trigger validation
+        self.__class__.parse_obj(self.dict())
+
         hash_key = self.Config.hash_key
         data = self.dict()
         old_revision = data.pop('revision')
