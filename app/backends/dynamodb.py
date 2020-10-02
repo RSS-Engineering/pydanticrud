@@ -7,7 +7,6 @@ from pydantic import BaseSettings
 from rule_engine import Rule, ast
 
 from ..exceptions import DoesNotExist, ConditionCheckFailed
-from ..cascade_types import FLAG_VALUE_TYPE
 
 
 class Settings(BaseSettings):
@@ -160,35 +159,6 @@ class Backend:
         except ClientError as e:
             if e.response['Error']['Code'] == 'ConditionalCheckFailedException' and condition:
                 raise ConditionCheckFailed()
-            raise e
-
-    def update_value(self, cls, item_key: str, new_values: Dict[str, FLAG_VALUE_TYPE], condition: Rule):
-        hash_key = cls.Config.hash_key
-        try:
-            res = self.get_table(cls).update_item(
-                Key={
-                    hash_key: item_key
-                },
-                # "revision = :nr, #f = :v",
-                UpdateExpression="SET " + ",".join(f"{name} = :{name}" for name in new_values.keys()),
-                # ExpressionAttributeNames={'#f': field},
-                ExpressionAttributeValues={
-                  f":{name}": value
-                  for name, value in new_values.items()
-                },
-                # ExpressionAttributeValues={
-                #     ':nr': str(new_revision),
-                #     ':v': value
-                # },
-                ConditionExpression=rule_to_boto_expression(condition, hash_key)
-            )
-            return res['ResponseMetadata']['HTTPStatusCode'] == 200
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                item = self.get(cls, item_key)
-                if all(getattr(item, name) == value for name, value in new_values.items):
-                    return True
-                raise ConditionCheckFailed
             raise e
 
     def delete(self, cls, item_key: str):

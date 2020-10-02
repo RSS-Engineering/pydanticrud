@@ -10,7 +10,6 @@ from ..exceptions import ConditionCheckFailed, RevisionMismatch
 
 
 def build_update_condition(hash_key: str, key_value: FLAG_VALUE_TYPE):
-    # Key(hash_key).eq(key_value)
     return f'{hash_key} == "{key_value}"'
 
 
@@ -23,20 +22,15 @@ def build_update_condition_with_revision(
         allow_create: bool = False):
     condition = build_update_condition(hash_key, key_value)
 
-    # attr = Attr('revision')
     if isinstance(revision, UUID):
-        # condition = condition and attr.eq(str(revision))
         condition += f' and revision == "{revision}"'
 
         if None not in (field, value):
-            # condition = condition and Attr(field).ne(value)
             condition += f' and {field} != "{value}"'
 
     elif allow_create:
-        # condition = condition and attr.not_exists()
         condition += f' and revision == NULL'
     else:
-        # condition = False
         condition += f' and 1 == 0'
 
     return Rule(condition)
@@ -78,26 +72,6 @@ class UnversionedBaseModel(BaseModel):
 
 class VersionedBaseModel(UnversionedBaseModel):
     revision: Optional[UUID]
-
-    @classmethod
-    def update_value(cls, key: str, field: str, value: FLAG_VALUE_TYPE, revision: Optional[UUID]) -> UUID:
-        new_revision = uuid4()
-        hash_key = cls.Config.hash_key
-
-        condition = build_update_condition_with_revision(
-            hash_key,
-            key,
-            revision,
-            field,
-            value
-        )
-
-        try:
-            if backend.update_value(cls, key, {"revision": new_revision, field: value}, condition):
-                return new_revision
-            return revision
-        except ConditionCheckFailed:
-            raise RevisionMismatch('Provided revision is out of date' if revision else 'Must provide a revision')
 
     def save(self):
         # Parse the new obj to trigger validation
