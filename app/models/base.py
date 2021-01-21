@@ -29,7 +29,7 @@ def build_update_condition_with_revision(
             condition += f' and {field} != "{value}"'
 
     elif allow_create:
-        condition += f' and revision == NULL'
+        condition += f' and revision == null'
     else:
         condition += f' and 1 == 0'
 

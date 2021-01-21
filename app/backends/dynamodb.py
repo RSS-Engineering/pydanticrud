@@ -47,11 +47,11 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         if expr.type == 'ne':
             return left.ne(right) if right is not None else left.exists()
     if isinstance(expr, ast.SymbolExpression):
-        if expr.name == 'NULL':
-            return None
         if key_name is not None and expr.name == key_name:
             return Key(expr.name)
         return Attr(expr.name)
+    if isinstance(expr, ast.NullExpression):
+        return None
     if isinstance(expr, ast.StringExpression):
         return expr.value
     if isinstance(expr, ast.ContainsExpression):
