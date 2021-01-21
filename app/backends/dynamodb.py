@@ -14,8 +14,6 @@ class Settings(BaseSettings):
     SECRET_ACCESS_KEY: str
     REGION: str = 'us-east-2'
     ENDPOINT: Optional[str] = None
-    DEFAULT_READ: int = 1
-    DEFAULT_WRITE: int = 1
     INITIALIZE: bool = False
 
     class Config:
@@ -89,8 +87,6 @@ class Backend:
         schema = cls.schema()
         hash_key = cls.Config.hash_key
 
-        read_units = self.settings.DEFAULT_READ
-        write_units = self.settings.DEFAULT_WRITE
         table = self.dynamodb.create_table(
             AttributeDefinitions=[
                 {
@@ -106,8 +102,8 @@ class Backend:
                 },
             ],
             ProvisionedThroughput={
-                'ReadCapacityUnits': read_units,
-                'WriteCapacityUnits': write_units
+                'ReadCapacityUnits': 1,
+                'WriteCapacityUnits': 1
             },
         )
         table.wait_until_exists()
