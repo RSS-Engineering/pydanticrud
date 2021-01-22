@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional
 import json
 from decimal import Decimal
 from sqlite3 import connect
@@ -10,7 +10,7 @@ from ..exceptions import DoesNotExist, ConditionCheckFailed
 
 
 class Settings(BaseSettings):
-    DB: str = ':memory'
+    DB: str = 'cascade.db'
     INITIALIZE: bool = True
 
     class Config:
@@ -88,56 +88,57 @@ DESERIALIZE_MAP = {
 
 
 class Backend:
-    def __init__(self):
+    def __init__(self, cls):
         self.settings = Settings()
+        self.schema = cls.schema()
+        self.hash_key = cls.Config.hash_key
+        self.table_name = cls.get_table_name()
         self._conn = connect(self.settings.DB, isolation_level=None)
 
-    @staticmethod
-    def sql_field_defs(cls):
-        schema = cls.schema()
+    def sql_field_defs(self):
+        schema = self.schema
         return {
             k: SQLITE_TYPE_MAP.get(v['type'], 'TEXT')
             for k, v in schema['properties'].items()
         }
 
-    def initialize(self, cls):
-        field_defs = self.sql_field_defs(cls)
-        field_defs[cls.Config.hash_key] += ' PRIMARY KEY'
+    def initialize(self):
+        field_defs = self.sql_field_defs()
+        field_defs[self.hash_key] += ' PRIMARY KEY'
         fields = ', '.join(f"{k} {v}" for k, v in field_defs.items())
         c = self._conn.cursor()
-        c.execute(f'''CREATE TABLE IF NOT EXISTS {cls.get_table_name()} ({fields})''')
+        c.execute(f'''CREATE TABLE IF NOT EXISTS {self.table_name} ({fields})''')
         c.close()
-        return True
 
-    def exists(self, cls):
+    def exists(self):
         c = self._conn.cursor()
-        c.execute("select sql from sqlite_master where type = 'table' and name = ?;", [cls.get_table_name()])
+        c.execute("select sql from sqlite_master where type = 'table' and name = ?;", [self.table_name])
         res = bool(c.fetchone())
         c.close()
         return res
 
-    def query(self, cls, expression):
+    def query(self, expression):
         # fields = tuple(self.sql_field_defs(cls).keys())
         c = self._conn.cursor()
         expression, params = rule_to_sqlite_expression(expression)
-        c.execute(f"select * from {cls.get_table_name()} where {expression};", params)
+        c.execute(f"select * from {self.table_name} where {expression};", params)
         res = list(c.fetchall())
         c.close()
-        schema = cls.schema()['properties']
+        schema = self.schema['properties']
         fields = list(schema.keys())
         return [
             {k: DESERIALIZE_MAP[schema[k]['type']](v) for k, v in zip(fields, rec)}
             for rec in res
         ]
 
-    def get(self, cls, item_key):
+    def get(self, item_key):
         c = self._conn.cursor()
-        c.execute(f"select * from {cls.get_table_name()} where {cls.Config.hash_key} = ?;", [item_key])
+        c.execute(f"select * from {self.table_name} where {self.hash_key} = ?;", [item_key])
         res = c.fetchone()
         c.close()
         if not res:
             raise DoesNotExist
-        schema = cls.schema()['properties']
+        schema = self.schema['properties']
         fields = list(schema.keys())
         return {k: DESERIALIZE_MAP[schema[k]['type']](v) for k, v in zip(fields, res)}
 
@@ -145,14 +146,14 @@ class Backend:
         table_name = item.get_table_name()
         hash_key = item.Config.hash_key
         key = getattr(item, hash_key)
-        fields_def = self.sql_field_defs(item.__class__)
+        fields_def = self.sql_field_defs()
         fields = tuple(fields_def.keys())
 
         schema = item.schema()['properties']
         item_data = item.dict()
         values = tuple([SERIALIZE_MAP[schema[field]['type']](item_data[field]) for field in fields])
         try:
-            old_item = self.get(item.__class__, key)
+            old_item = self.get(key)
             if not condition.matches(old_item):
                 raise ConditionCheckFailed()
 
@@ -170,6 +171,5 @@ class Backend:
             self._conn.execute(f"insert into {table_name} values ({qs})", values)
         return True
 
-    def delete(self, cls, item_key: str):
-        table_name = cls.get_table_name()
-        self._conn.execute(f"DELETE FROM {table_name} WHERE {cls.Config.hash_key} = ?;", [item_key])
+    def delete(self, item_key: str):
+        self._conn.execute(f"DELETE FROM {self.table_name} WHERE {self.hash_key} = ?;", [item_key])

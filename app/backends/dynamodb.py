@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -75,17 +75,20 @@ DYNAMO_TYPE_MAP = {
 
 
 class Backend:
-    def __init__(self):
+    def __init__(self, cls):
         self.settings = Settings()
+        self.schema = cls.schema()
+        self.hash_key = cls.Config.hash_key
+        self.table_name = cls.get_table_name()
         self.dynamodb = boto3.resource(
             'dynamodb',
             region_name=self.settings.REGION,
             endpoint_url=self.settings.ENDPOINT
         )
 
-    def initialize(self, cls):
-        schema = cls.schema()
-        hash_key = cls.Config.hash_key
+    def initialize(self):
+        schema = self.schema
+        hash_key = self.hash_key
 
         table = self.dynamodb.create_table(
             AttributeDefinitions=[
@@ -94,7 +97,7 @@ class Backend:
                     'AttributeType': DYNAMO_TYPE_MAP.get(schema['properties'][hash_key]['type'], 'S')
                 },
             ],
-            TableName=cls.Config.title.lower(),
+            TableName=self.table_name,
             KeySchema=[
                 {
                     'AttributeName': hash_key,
@@ -107,49 +110,48 @@ class Backend:
             },
         )
         table.wait_until_exists()
-        return table
 
-    def get_table(self, cls):
-        return self.dynamodb.Table(cls.get_table_name())
+    def get_table(self):
+        return self.dynamodb.Table(self.table_name)
 
-    def exists(self, cls):
-        table = self.get_table(cls)
+    def exists(self):
+        table = self.get_table()
         try:
             return table.table_status == 'ACTIVE'
         except ClientError:
             return False
 
-    def query(self, cls, expression):
-        table = self.get_table(cls)
+    def query(self, expression):
+        table = self.get_table()
         res = table.scan(
-            FilterExpression=rule_to_boto_expression(expression, cls.Config.hash_key)
+            FilterExpression=rule_to_boto_expression(expression, self.hash_key)
         )
         return res['Items']
 
-    def get(self, cls, item_key):
-        resp = self.get_table(cls).get_item(
+    def get(self, item_key):
+        resp = self.get_table().get_item(
             Key={
-                cls.Config.hash_key: item_key
+                self.hash_key: item_key
             }
         )
 
         if 'Item' not in resp:
-            raise DoesNotExist(f'{cls.Config.title} "{item_key}" does not exist')
+            raise DoesNotExist(f'{self.table_name} "{item_key}" does not exist')
         return resp['Item']
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         cls = item.__class__
-        hash_key = cls.Config.hash_key
+        hash_key = self.hash_key
         data = item.dict()
 
         try:
             if condition:
-                res = self.get_table(cls).put_item(
+                res = self.get_table().put_item(
                     Item=data,
                     ConditionExpression=rule_to_boto_expression(condition, hash_key)
                 )
             else:
-                res = self.get_table(cls).put_item(Item=data)
+                res = self.get_table().put_item(Item=data)
             return res['ResponseMetadata']['HTTPStatusCode'] == 200
 
         except ClientError as e:
@@ -157,9 +159,9 @@ class Backend:
                 raise ConditionCheckFailed()
             raise e
 
-    def delete(self, cls, item_key: str):
-        self.get_table(cls).delete_item(
+    def delete(self, item_key: str):
+        self.get_table().delete_item(
             Key={
-                cls.Config.hash_key: item_key
+                self.hash_key: item_key
             }
         )

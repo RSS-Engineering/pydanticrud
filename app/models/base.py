@@ -4,7 +4,7 @@ from uuid import uuid4, UUID
 from pydantic import BaseModel
 from rule_engine import Rule
 
-from ..settings import backend
+from ..settings import get_backend
 from ..cascade_types import FLAG_VALUE_TYPE
 from ..exceptions import ConditionCheckFailed, RevisionMismatch
 
@@ -39,7 +39,7 @@ def build_update_condition_with_revision(
 class UnversionedBaseModel(BaseModel):
     @classmethod
     def initialize(cls):
-        backend.initialize(cls)
+        get_backend(cls).initialize()
 
     @classmethod
     def get_table_name(cls) -> str:
@@ -47,27 +47,27 @@ class UnversionedBaseModel(BaseModel):
 
     @classmethod
     def exists(cls):
-        return backend.exists(cls)
+        return get_backend(cls).exists()
 
     @classmethod
     def query(cls, condition: Rule):
-        res = backend.query(cls, condition)
+        res = get_backend(cls).query(condition)
         return [cls.parse_obj(i) for i in res]
 
     @classmethod
     def get(cls, item_key: str):
-        return cls.parse_obj(backend.get(cls, item_key))
+        return cls.parse_obj(get_backend(cls).get(item_key))
 
     def save(self) -> bool:
         # Parse the new obj to trigger validation
         self.__class__.parse_obj(self.dict())
 
         # Maybe we should pass a conditional to the backend but for now the only place that uses it doesn't need it.
-        return backend.save(self)
+        return get_backend(self.__class__).save(self)
 
     @classmethod
     def delete(cls, item_key: str):
-        backend.delete(cls, item_key)
+        get_backend(cls).delete(cls, item_key)
 
 
 class VersionedBaseModel(UnversionedBaseModel):
@@ -90,7 +90,7 @@ class VersionedBaseModel(UnversionedBaseModel):
         )
 
         try:
-            if not backend.save(self, condition):
+            if not get_backend(self.__class__).save(self, condition):
                 self.revision = old_revision
         except ConditionCheckFailed:
             self.revision = old_revision
