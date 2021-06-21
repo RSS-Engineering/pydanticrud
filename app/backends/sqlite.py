@@ -47,10 +47,6 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         return None, ()
     if isinstance(expr, ast.StringExpression):
         return "?", tuple([expr.value])
-    # if isinstance(expr, ast.ContainsExpression):
-    #     container = expression_to_condition(expr.container, key_name)
-    #     member = expression_to_condition(expr.member, key_name)
-    #     return container.contains(member)
     raise NotImplementedError
 
 
