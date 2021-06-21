@@ -32,6 +32,13 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
             return f"{left} = {right}" if right is not None else f"{left} IS NULL", l_params + r_params
         if expr.type == 'ne':
             return f"{left} != {right}" if right is not None else f"{left} IS NOT NULL", l_params + r_params
+    if isinstance(expr, ast.ContainsExpression):
+        container, container_params = expression_to_condition(expr.container, key_name)
+        member, member_params = expression_to_condition(expr.member, key_name)
+
+        clean_member_params = tuple(['%"' + member_params[0].strip('\"') + '"%'])
+        return f"{container} like {member}", container_params + clean_member_params
+
     if isinstance(expr, ast.SymbolExpression):
         if expr.name == 'null':
             return None, ()
@@ -61,6 +68,11 @@ SQLITE_TYPE_MAP = {
     'array': 'JSON'
 }
 
+
+def smart_serialize_array(data):
+    return json.dumps(list(data))
+
+
 SERIALIZE_MAP = {
     'int': int,
     'decimal': str,
@@ -68,7 +80,7 @@ SERIALIZE_MAP = {
     'string': str,
     'bool': lambda b: 1 if b else 0,
     'object': json.dumps,
-    'array': json.dumps,
+    'array': smart_serialize_array,
 }
 
 
