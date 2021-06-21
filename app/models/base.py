@@ -67,7 +67,7 @@ class UnversionedBaseModel(BaseModel):
 
     @classmethod
     def delete(cls, item_key: str):
-        get_backend(cls).delete(cls, item_key)
+        get_backend(cls).delete(item_key)
 
 
 class VersionedBaseModel(UnversionedBaseModel):
