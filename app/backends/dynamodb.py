@@ -46,13 +46,17 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
             return left.eq(right) if right is not None else left.not_exists()
         if expr.type == 'ne':
             return left.ne(right) if right is not None else left.exists()
+    if isinstance(expr, ast.ArithmeticComparisonExpression):
+        left, l_params = expression_to_condition(expr.left, key_name)
+        right, r_params = expression_to_condition(expr.right, key_name)
+        return getattr(left, expr.type)(right)
     if isinstance(expr, ast.SymbolExpression):
         if key_name is not None and expr.name == key_name:
             return Key(expr.name)
         return Attr(expr.name)
     if isinstance(expr, ast.NullExpression):
         return None
-    if isinstance(expr, ast.StringExpression):
+    if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
         return expr.value
     if isinstance(expr, ast.ContainsExpression):
         container = expression_to_condition(expr.container, key_name)

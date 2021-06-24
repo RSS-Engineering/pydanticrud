@@ -32,6 +32,11 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
             return f"{left} = {right}" if right is not None else f"{left} IS NULL", l_params + r_params
         if expr.type == 'ne':
             return f"{left} != {right}" if right is not None else f"{left} IS NOT NULL", l_params + r_params
+    if isinstance(expr, ast.ArithmeticComparisonExpression):
+        left, l_params = expression_to_condition(expr.left, key_name)
+        right, r_params = expression_to_condition(expr.right, key_name)
+        op = dict(lt="<", gt=">", lte="<=", gte=">=")[expr.type]
+        return f"{left} {op} {right}", l_params + r_params
     if isinstance(expr, ast.ContainsExpression):
         container, container_params = expression_to_condition(expr.container, key_name)
         member, member_params = expression_to_condition(expr.member, key_name)
@@ -45,7 +50,7 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         return expr.name, ()
     if isinstance(expr, ast.NullExpression):
         return None, ()
-    if isinstance(expr, ast.StringExpression):
+    if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
         return "?", tuple([expr.value])
     raise NotImplementedError
 
@@ -126,7 +131,6 @@ class Backend:
         return res
 
     def query(self, expression):
-        # fields = tuple(self.sql_field_defs(cls).keys())
         c = self._conn.cursor()
         expression, params = rule_to_sqlite_expression(expression)
         c.execute(f"select * from {self.table_name} where {expression};", params)
