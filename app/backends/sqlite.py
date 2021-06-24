@@ -166,7 +166,7 @@ class Backend:
         values = tuple([SERIALIZE_MAP[schema[field]['type']](item_data[field]) for field in fields])
         try:
             old_item = self.get(key)
-            if not condition.matches(old_item):
+            if condition and not condition.matches(old_item):
                 raise ConditionCheckFailed()
 
             qs = ', '.join(f"{field} = ?" for field in fields)
@@ -174,7 +174,7 @@ class Backend:
                 condition_expr, condition_params = rule_to_sqlite_expression(condition)
             else:
                 condition_expr = f"{hash_key} = ?"
-                condition_params = tuple(key)
+                condition_params = tuple([key])
 
             self._conn.execute(f"UPDATE {table_name} SET {qs} WHERE {condition_expr};", values + condition_params)
             return True
