@@ -82,6 +82,7 @@ SERIALIZE_MAP = {
     'bool': lambda b: 1 if b else 0,
     'object': json.dumps,
     'array': smart_serialize_array,
+    'anyOf': str,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
 
@@ -97,6 +98,7 @@ DESERIALIZE_MAP = {
     'bool': bool,
     'object': json.loads,
     'array': json.loads,
+    'anyOf': do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
 
@@ -111,7 +113,7 @@ class Backend:
     def sql_field_defs(self):
         schema = self.schema
         return {
-            k: SQLITE_TYPE_MAP.get(v['type'], 'TEXT')
+            k: SQLITE_TYPE_MAP.get(v.get('type', 'anyOf'), 'TEXT')
             for k, v in schema['properties'].items()
         }
 
@@ -152,7 +154,7 @@ class Backend:
             raise DoesNotExist
         schema = self.schema['properties']
         fields = list(schema.keys())
-        return {k: DESERIALIZE_MAP[schema[k]['type']](v) for k, v in zip(fields, res)}
+        return {k: DESERIALIZE_MAP[schema[k].get('type', 'anyOf')](v) for k, v in zip(fields, res)}
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         table_name = item.get_table_name()
@@ -163,7 +165,7 @@ class Backend:
 
         schema = item.schema()['properties']
         item_data = item.dict()
-        values = tuple([SERIALIZE_MAP[schema[field]['type']](item_data[field]) for field in fields])
+        values = tuple([SERIALIZE_MAP[schema[field].get('type', 'anyOf')](item_data[field]) for field in fields])
         try:
             old_item = self.get(key)
             if condition and not condition.matches(old_item):

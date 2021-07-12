@@ -98,7 +98,7 @@ class Backend:
             AttributeDefinitions=[
                 {
                     'AttributeName': hash_key,
-                    'AttributeType': DYNAMO_TYPE_MAP.get(schema['properties'][hash_key]['type'], 'S')
+                    'AttributeType': DYNAMO_TYPE_MAP.get(schema['properties'][hash_key].get('type', 'anyOf'), 'S')
                 },
             ],
             TableName=self.table_name,
