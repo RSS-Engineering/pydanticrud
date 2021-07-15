@@ -8,7 +8,7 @@ class CrudMetaClass(ModelMetaclass):
         print(bases)
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
         if hasattr(cls.__config__, 'backend'):
-            cls.__backend__ = cls.__config__.backend
+            cls.__backend__ = cls.__config__.backend(cls)
 
         return cls
 
@@ -16,7 +16,7 @@ class CrudMetaClass(ModelMetaclass):
 class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
     @classmethod
     def initialize(cls):
-        pass
+        return cls.__backend__.initialize()
 
     @classmethod
     def get_table_name(cls) -> str:

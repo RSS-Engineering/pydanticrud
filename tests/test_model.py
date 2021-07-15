@@ -4,6 +4,9 @@ from pydanticrud import BaseModel
 
 
 class FalseBackend:
+    def __init__(self, cfg):
+        self.cfg = cfg
+
     @classmethod
     def get(cls, id):
         pass

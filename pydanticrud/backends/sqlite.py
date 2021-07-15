@@ -3,18 +3,9 @@ import json
 from decimal import Decimal
 from sqlite3 import connect
 
-from pydantic import BaseSettings
-from rule_engine import Rule, ast
+from rule_engine import Rule, ast, types
 
 from ..exceptions import DoesNotExist, ConditionCheckFailed
-
-
-class Settings(BaseSettings):
-    DB: str = 'cascade.db'
-    INITIALIZE: bool = True
-
-    class Config:
-        env_prefix = 'SQLITE_'
 
 
 def expression_to_condition(expr, key_name: Optional[str] = None):
@@ -52,6 +43,9 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         return None, ()
     if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
         return "?", tuple([expr.value])
+    if isinstance(expr, ast.FloatExpression):
+        val = expr.value
+        return "?", tuple([val if not types.is_integer_number(val) else int(val)])
     raise NotImplementedError
 
 
@@ -76,6 +70,8 @@ def smart_serialize_array(data):
 
 SERIALIZE_MAP = {
     'int': int,
+    'integer': int,
+    'number': float,
     'decimal': str,
     'double': str,
     'string': str,
@@ -92,6 +88,8 @@ def do_nothing(x):
 
 DESERIALIZE_MAP = {
     'int': do_nothing,
+    'integer': do_nothing,
+    'number': float,
     'decimal': Decimal,
     'double': Decimal,
     'string': do_nothing,
@@ -104,11 +102,11 @@ DESERIALIZE_MAP = {
 
 class Backend:
     def __init__(self, cls):
-        self.settings = Settings()
+        cfg = cls.Config
         self.schema = cls.schema()
-        self.hash_key = cls.Config.hash_key
+        self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
-        self._conn = connect(self.settings.DB, isolation_level=None)
+        self._conn = connect(cfg.database, isolation_level=None)
 
     def sql_field_defs(self):
         schema = self.schema
