@@ -8,7 +8,7 @@ from .backends.sqlite import Backend as SQLiteBackend
 
 
 class Settings(BaseSettings):
-    backends: Dict[str, PyObject] = {"default": "app.backends.sqlite.Backend"}
+    backends: Dict[str, PyObject] = {"default": "backends.sqlite.Backend"}
     initialize: bool = False
 
     class Config:

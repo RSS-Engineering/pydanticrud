@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "pydanticrud"
+version = "0.1.0"
+description = "Supercharge your Pydantic models with CRUD methods and a pluggable backend"
+authors = ["Timothy Farrell <tim.farrell@rackspace.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+rule-engine = "^3.2.0"
+pydantic = "^1.8.2"
+boto3 = {version = "^1.17.112", optional = true}
+
+[tool.poetry.dev-dependencies]
+boto3 = "^1.17.112"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

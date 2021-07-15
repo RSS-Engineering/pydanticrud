@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from rule_engine import Rule
 
-from ..settings import get_backend
+from .settings import get_backend
 
 
 class UnversionedBaseModel(BaseModel):
