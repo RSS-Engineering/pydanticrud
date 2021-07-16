@@ -41,7 +41,11 @@ Finally, add appropriate members to the `Config` class for the chosen backend.
 `delete(id)` - delete the record from backend
 
 `query(rule)` - return a list of records that satify the rule. Rules are
-defined by `rule-engine` for querying or filtering the backend.
+defined by [rule-engine](https://zerosteiner.github.io/rule-engine/) for
+querying or filtering the backend.
+
+NOTE: Rule complexity is limited by the querying capabilities of the backend.
+For example: querying on a non-hash_key in dynamo will run a scan and be slow.
 
 ### Instance Methods
 
