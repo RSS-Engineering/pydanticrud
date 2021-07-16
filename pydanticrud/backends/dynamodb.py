@@ -3,32 +3,9 @@ from typing import Optional
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
-from pydantic import BaseSettings
-from rule_engine import Rule, ast
+from rule_engine import Rule, ast, types
 
 from ..exceptions import DoesNotExist, ConditionCheckFailed
-
-
-class Settings(BaseSettings):
-    ACCESS_KEY_ID: str
-    SECRET_ACCESS_KEY: str
-    REGION: str = 'us-east-2'
-    ENDPOINT: Optional[str] = None
-    INITIALIZE: bool = False
-
-    class Config:
-        env_prefix = 'DYNAMO_'
-        fields = {
-            "ACCESS_KEY_ID": {
-                "env": "AWS_ACCESS_KEY_ID"
-            },
-            "SECRET_ACCESS_KEY": {
-                "env": "AWS_SECRET_ACCESS_KEY"
-            },
-            "REGION": {
-                "env": ["DYNAMO_REGION", "AWS_REGION"]
-            }
-        }
 
 
 def expression_to_condition(expr, key_name: Optional[str] = None):
@@ -58,6 +35,9 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         return None
     if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
         return expr.value
+    if isinstance(expr, ast.FloatExpression):
+        val = expr.value
+        return "?", tuple([val if not types.is_integer_number(val) else int(val)])
     if isinstance(expr, ast.ContainsExpression):
         container = expression_to_condition(expr.container, key_name)
         member = expression_to_condition(expr.member, key_name)
@@ -80,14 +60,14 @@ DYNAMO_TYPE_MAP = {
 
 class Backend:
     def __init__(self, cls):
-        self.settings = Settings()
+        cfg = cls.Config
         self.schema = cls.schema()
-        self.hash_key = cls.Config.hash_key
+        self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
         self.dynamodb = boto3.resource(
             'dynamodb',
-            region_name=self.settings.REGION,
-            endpoint_url=self.settings.ENDPOINT
+            region_name=getattr(cfg, 'region', 'us-east-2'),
+            endpoint_url=getattr(cfg, 'endpoint', None)
         )
 
     def initialize(self):
@@ -144,7 +124,6 @@ class Backend:
         return resp['Item']
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        cls = item.__class__
         hash_key = self.hash_key
         data = item.dict()
 

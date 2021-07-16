@@ -14,6 +14,7 @@ boto3 = {version = "^1.17.112", optional = true}
 [tool.poetry.dev-dependencies]
 boto3 = "^1.17.112"
 pytest = "^6.2.4"
+docker = "^5.0.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
