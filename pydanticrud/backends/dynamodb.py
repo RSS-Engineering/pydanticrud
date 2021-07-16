@@ -1,4 +1,6 @@
 from typing import Optional
+from decimal import Decimal
+import json
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -57,6 +59,35 @@ DYNAMO_TYPE_MAP = {
     "bool": "BOOL",
 }
 
+SERIALIZE_MAP = {
+    "int": int,
+    "integer": int,
+    "number": Decimal,
+    "decimal": str,
+    "double": str,
+    "string": str,
+    "object": json.dumps,
+    "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
+}
+
+
+def do_nothing(x):
+    return x
+
+
+DESERIALIZE_MAP = {
+    "int": do_nothing,
+    "integer": do_nothing,
+    "number": float,
+    "decimal": Decimal,
+    "double": Decimal,
+    "string": do_nothing,
+    "bool": bool,
+    "object": json.loads,
+    "array": json.loads,
+    "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
+}
+
 
 class Backend:
     def __init__(self, cls):
@@ -103,19 +134,29 @@ class Backend:
 
     def query(self, expression):
         table = self.get_table()
-        res = table.scan(FilterExpression=rule_to_boto_expression(expression, self.hash_key))
-        return res["Items"]
+        resp = table.scan(FilterExpression=rule_to_boto_expression(expression, self.hash_key))
+        schema = self.schema["properties"]
+        return [
+            {k: DESERIALIZE_MAP[schema[k]["type"]](v) for k, v in rec.items()} for rec in resp['Items']
+        ]
 
     def get(self, item_key):
         resp = self.get_table().get_item(Key={self.hash_key: item_key})
 
         if "Item" not in resp:
             raise DoesNotExist(f'{self.table_name} "{item_key}" does not exist')
-        return resp["Item"]
+        schema = self.schema["properties"]
+        return {k: DESERIALIZE_MAP[schema[k].get("type", "anyOf")](v) for k, v in resp["Item"].items()}
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         hash_key = self.hash_key
-        data = item.dict()
+        item_data = item.dict()
+
+        schema = item.schema()["properties"]
+        data = {
+            field_name: SERIALIZE_MAP[schema[field_name].get("type", "anyOf")](value)
+            for field_name, value in item_data.items()
+        }
 
         try:
             if condition:
