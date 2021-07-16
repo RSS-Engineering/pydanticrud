@@ -28,9 +28,9 @@ and DynamoDB backends. You can provide your own if you like.
 
 Finally, add appropriate members to the `Config` class for the chosen backend.
 
-### Methods
+## Methods
 
-#### Model Methods
+### Model Methods
 
 `get(id)` - return and instance of the Model from the backend indexed by `id`
 
@@ -43,21 +43,34 @@ Finally, add appropriate members to the `Config` class for the chosen backend.
 `query(rule)` - return a list of records that satify the rule. Rules are
 defined by `rule-engine` for querying or filtering the backend.
 
-#### Instance Methods
+### Instance Methods
 
 `save()` - store the Model instance to the backend
 
-### Backend Configuration Members
+## Backend Configuration Members
 
 `hash_key` - the name of the key field for the backend table
 
-#### DynamoDB
+### DynamoDB
 
 `region` - (optional) specify the region to access dynamodb in.
 
 `endpoint` - specify an endpoint to use a local or non-AWS implementation of
 DynamoDB
 
-#### SQLite
+### SQLite
 
 `database` - the filename of the database file for SQLite to use
+
+## Roadmap
+
+There is plenty of room for improvement to PydantiCRUD.
+
+- Backend feature support not being consistent is the most egregious flaw that can be incrementally
+improved.
+
+- Add more backends
+
+  - REST API
+  - Redis
+  - Postgres/MySQL
