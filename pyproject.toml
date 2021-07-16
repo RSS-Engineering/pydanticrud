@@ -15,7 +15,12 @@ boto3 = {version = "^1.17.112", optional = true}
 boto3 = "^1.17.112"
 pytest = "^6.2.4"
 docker = "^5.0.0"
+black = "^21.6b0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py37']

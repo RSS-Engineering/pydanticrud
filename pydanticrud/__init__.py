@@ -1,4 +1,3 @@
-
 from .main import BaseModel
 from .exceptions import DoesNotExist, ConditionCheckFailed
 from .backends.sqlite import Backend as SqliteBackend
@@ -9,5 +8,5 @@ __all__ = [
     "DoesNotExist",
     "ConditionCheckFailed",
     "SqliteBackend",
-    "DynamoDbBackend"
+    "DynamoDbBackend",
 ]

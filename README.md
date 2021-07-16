@@ -78,3 +78,15 @@ improved.
   - REST API
   - Redis
   - Postgres/MySQL
+
+## Tools
+
+### Testing
+
+You can run unittests with `poetry run pytest`
+
+### Formatting
+
+You can format the code by running:
+
+`for d in pydanticrud tests; do poetry run black $d; done`

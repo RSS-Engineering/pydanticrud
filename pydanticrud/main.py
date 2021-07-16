@@ -6,7 +6,7 @@ from rule_engine import Rule
 class CrudMetaClass(ModelMetaclass):
     def __new__(mcs, name, bases, namespace, **kwargs):
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-        if hasattr(cls.__config__, 'backend'):
+        if hasattr(cls.__config__, "backend"):
             cls.__backend__ = cls.__config__.backend(cls)
 
         return cls

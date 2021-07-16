@@ -12,16 +12,16 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
     if isinstance(expr, ast.LogicExpression):
         left = expression_to_condition(expr.left, key_name)
         right = expression_to_condition(expr.right, key_name)
-        if expr.type == 'and':
+        if expr.type == "and":
             return left and right
-        if expr.type == 'or':
+        if expr.type == "or":
             return left or right
     if isinstance(expr, ast.ComparisonExpression):
         left = expression_to_condition(expr.left, key_name)
         right = expression_to_condition(expr.right, key_name)
-        if expr.type == 'eq':
+        if expr.type == "eq":
             return left.eq(right) if right is not None else left.not_exists()
-        if expr.type == 'ne':
+        if expr.type == "ne":
             return left.ne(right) if right is not None else left.exists()
     if isinstance(expr, ast.ArithmeticComparisonExpression):
         left, l_params = expression_to_condition(expr.left, key_name)
@@ -51,10 +51,10 @@ def rule_to_boto_expression(rule: Rule, key_name: Optional[str] = None):
 
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/dynamodb.html#valid-dynamodb-types
 DYNAMO_TYPE_MAP = {
-    'int': 'N',
-    'decimal': 'N',
-    'double': 'N',
-    'bool': 'BOOL',
+    "int": "N",
+    "decimal": "N",
+    "double": "N",
+    "bool": "BOOL",
 }
 
 
@@ -65,9 +65,9 @@ class Backend:
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
         self.dynamodb = boto3.resource(
-            'dynamodb',
-            region_name=getattr(cfg, 'region', 'us-east-2'),
-            endpoint_url=getattr(cfg, 'endpoint', None)
+            "dynamodb",
+            region_name=getattr(cfg, "region", "us-east-2"),
+            endpoint_url=getattr(cfg, "endpoint", None),
         )
 
     def initialize(self):
@@ -77,21 +77,17 @@ class Backend:
         table = self.dynamodb.create_table(
             AttributeDefinitions=[
                 {
-                    'AttributeName': hash_key,
-                    'AttributeType': DYNAMO_TYPE_MAP.get(schema['properties'][hash_key].get('type', 'anyOf'), 'S')
+                    "AttributeName": hash_key,
+                    "AttributeType": DYNAMO_TYPE_MAP.get(
+                        schema["properties"][hash_key].get("type", "anyOf"), "S"
+                    ),
                 },
             ],
             TableName=self.table_name,
             KeySchema=[
-                {
-                    'AttributeName': hash_key,
-                    'KeyType': 'HASH'
-                },
+                {"AttributeName": hash_key, "KeyType": "HASH"},
             ],
-            ProvisionedThroughput={
-                'ReadCapacityUnits': 1,
-                'WriteCapacityUnits': 1
-            },
+            ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
         )
         table.wait_until_exists()
 
@@ -101,27 +97,21 @@ class Backend:
     def exists(self):
         table = self.get_table()
         try:
-            return table.table_status == 'ACTIVE'
+            return table.table_status == "ACTIVE"
         except ClientError:
             return False
 
     def query(self, expression):
         table = self.get_table()
-        res = table.scan(
-            FilterExpression=rule_to_boto_expression(expression, self.hash_key)
-        )
-        return res['Items']
+        res = table.scan(FilterExpression=rule_to_boto_expression(expression, self.hash_key))
+        return res["Items"]
 
     def get(self, item_key):
-        resp = self.get_table().get_item(
-            Key={
-                self.hash_key: item_key
-            }
-        )
+        resp = self.get_table().get_item(Key={self.hash_key: item_key})
 
-        if 'Item' not in resp:
+        if "Item" not in resp:
             raise DoesNotExist(f'{self.table_name} "{item_key}" does not exist')
-        return resp['Item']
+        return resp["Item"]
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         hash_key = self.hash_key
@@ -131,20 +121,16 @@ class Backend:
             if condition:
                 res = self.get_table().put_item(
                     Item=data,
-                    ConditionExpression=rule_to_boto_expression(condition, hash_key)
+                    ConditionExpression=rule_to_boto_expression(condition, hash_key),
                 )
             else:
                 res = self.get_table().put_item(Item=data)
-            return res['ResponseMetadata']['HTTPStatusCode'] == 200
+            return res["ResponseMetadata"]["HTTPStatusCode"] == 200
 
         except ClientError as e:
-            if e.response['Error']['Code'] == 'ConditionalCheckFailedException' and condition:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException" and condition:
                 raise ConditionCheckFailed()
             raise e
 
     def delete(self, item_key: str):
-        self.get_table().delete_item(
-            Key={
-                self.hash_key: item_key
-            }
-        )
+        self.get_table().delete_item(Key={self.hash_key: item_key})
