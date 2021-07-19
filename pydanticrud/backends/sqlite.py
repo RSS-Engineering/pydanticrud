@@ -1,7 +1,7 @@
 from typing import Optional
 import json
 from decimal import Decimal
-from sqlite3 import connect
+from sqlite3 import connect, PARSE_DECLTYPES
 
 from rule_engine import Rule, ast, types
 
@@ -61,10 +61,11 @@ def rule_to_sqlite_expression(rule: Rule, key_name: Optional[str] = None):
 
 SQLITE_TYPE_MAP = {
     "int": "INTEGER",
-    "decimal": "TEXT",
+    "decimal": "DECIMAL",
+    "float": "REAL",
     "double": "REAL",
     "string": "TEXT",
-    "bool": "INTEGER",
+    "bool": "BOOL",
     "object": "JSON",
     "array": "JSON",
 }
@@ -81,7 +82,7 @@ SERIALIZE_MAP = {
     "decimal": str,
     "double": str,
     "string": str,
-    "bool": lambda b: 1 if b else 0,
+    "boolean": lambda b: 1 if b else 0,
     "object": json.dumps,
     "array": smart_serialize_array,
     "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
@@ -93,13 +94,12 @@ def do_nothing(x):
 
 
 DESERIALIZE_MAP = {
-    "int": do_nothing,
     "integer": do_nothing,
     "number": float,
     "decimal": Decimal,
     "double": Decimal,
     "string": do_nothing,
-    "bool": bool,
+    "boolean": do_nothing,
     "object": json.loads,
     "array": json.loads,
     "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
@@ -110,9 +110,13 @@ class Backend:
     def __init__(self, cls):
         cfg = cls.Config
         self.schema = cls.schema()
+        self.field_types = {
+            k: v.get("type", "json")
+            for k, v in self.schema["properties"].items()
+        }
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
-        self._conn = connect(cfg.database, isolation_level=None)
+        self._conn = connect(cfg.database, detect_types=PARSE_DECLTYPES)
 
     def sql_field_defs(self):
         schema = self.schema
@@ -122,40 +126,32 @@ class Backend:
         }
 
     def initialize(self):
-        field_defs = self.sql_field_defs()
+        field_defs = self.field_types
         field_defs[self.hash_key] += " PRIMARY KEY"
         fields = ", ".join(f"{k} {v}" for k, v in field_defs.items())
-        c = self._conn.cursor()
-        c.execute(f"""CREATE TABLE IF NOT EXISTS {self.table_name} ({fields})""")
-        c.close()
+        self._conn.execute(f"CREATE TABLE IF NOT EXISTS {self.table_name} ({fields})")
 
     def exists(self):
-        c = self._conn.cursor()
-        c.execute(
+        c = self._conn.execute(
             "select sql from sqlite_master where type = 'table' and name = ?;",
-            [self.table_name],
+            [self.table_name]
         )
         res = bool(c.fetchone())
-        c.close()
         return res
 
     def query(self, expression):
-        c = self._conn.cursor()
         expression, params = rule_to_sqlite_expression(expression)
-        c.execute(f"select * from {self.table_name} where {expression};", params)
-        res = list(c.fetchall())
-        c.close()
+        res = list(self._conn.execute(f"select * from {self.table_name} where {expression};", params))
         schema = self.schema["properties"]
         fields = list(schema.keys())
         return [
-            {k: DESERIALIZE_MAP[schema[k]["type"]](v) for k, v in zip(fields, rec)} for rec in res
+            {k: DESERIALIZE_MAP[schema[k]["type"]](v) for k, v in zip(fields, rec)}
+            for rec in res
         ]
 
     def get(self, item_key):
-        c = self._conn.cursor()
-        c.execute(f"select * from {self.table_name} where {self.hash_key} = ?;", [item_key])
+        c = self._conn.execute(f"select * from {self.table_name} where {self.hash_key} = ?;", [item_key])
         res = c.fetchone()
-        c.close()
         if not res:
             raise DoesNotExist
         schema = self.schema["properties"]
@@ -188,7 +184,6 @@ class Backend:
             else:
                 condition_expr = f"{hash_key} = ?"
                 condition_params = tuple([key])
-
             self._conn.execute(
                 f"UPDATE {table_name} SET {qs} WHERE {condition_expr};",
                 values + condition_params,

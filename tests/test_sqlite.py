@@ -1,20 +1,21 @@
+from typing import Dict, List
 from decimal import Decimal
+
+import pytest
 
 from pydanticrud import BaseModel, SqliteBackend
 from rule_engine import Rule
 
 
-class FalseBackend:
-    @classmethod
-    def get(cls, id):
-        pass
-
-
 class Model(BaseModel):
     id: int
+    value: int
     name: str
     total: float
     sigfig: Decimal
+    enabled: bool
+    data: Dict[str, str]
+    items: List[int]
 
     class Config:
         title = "ModelTitle123"
@@ -23,27 +24,69 @@ class Model(BaseModel):
         database = ":memory:"
 
 
+@pytest.fixture()
+def model_in_db():
+    if not Model.exists():
+        Model.initialize()
+
+
+def model_data_generator():
+    import random
+    return dict(
+        id=random.randint(0, 100000),
+        value=random.randint(0, 100000),
+        name=random.choice(("bob", "alice", "john", "jane")),
+        total=round(random.random(), 9),
+        sigfig=Decimal(str(random.random())[:6]),
+        enabled=random.choice((True, False)),
+        data=dict(a=str(random.randint(0, 1000))),
+        items=[random.randint(0, 100000), random.randint(0, 100000), random.randint(0, 100000)]
+    )
+
+
+def test_exist_checks_for_table_existence():
+    conn = Model.__backend__._conn
+
+    assert not Model.exists()
+    conn.execute(f"CREATE TABLE IF NOT EXISTS {Model.get_table_name()} (id INTEGER PRIMARY KEY)")
+    assert Model.exists()
+    conn.execute(f"DROP TABLE {Model.get_table_name()}")
+    assert not Model.exists()
+
+
 def test_initialize_creates_table():
     assert not Model.exists()
     Model.initialize()
-    assert Model.exists()
+    c = Model.__backend__._conn.execute(
+        "select sql from sqlite_master where type = 'table' and name = ?;",
+        [Model.get_table_name()]
+    )
+    assert bool(c.fetchone())
 
 
-def test_save_and_get():
-    data = dict(id=1, name="two", total=3.0, sigfig=Decimal("4.001"))
+def test_save_and_get(model_in_db):
+    data = model_data_generator()
     a = Model.parse_obj(data)
+    assert a.dict() == data
     a.save()
-    b = Model.get(1)
-    assert b.dict() == a.dict()
+    b = Model.get(data['id'])
+    assert b.dict() == data
 
 
-def test_query():
-    data1 = dict(id=1, name="two", total=5.0, sigfig=Decimal("4.001"))
-    data2 = dict(id=2, name="four", total=3.0, sigfig=Decimal("4.001"))
+def test_query(model_in_db):
+    data1 = model_data_generator()
+    data1['id'] = 1
+    data2 = model_data_generator()
+    data2['id'] = 2
+    data3 = model_data_generator()
+    data3['id'] = 1234
     Model.parse_obj(data1).save()
     Model.parse_obj(data2).save()
-    Model.parse_obj(dict(id=3, name="six", total=3.0, sigfig=Decimal("4.001"))).save()
-    Model.parse_obj(dict(id=4, name="eight", total=4.0, sigfig=Decimal("4.001"))).save()
-    res = Model.query(Rule("id < 3"))
+    Model.parse_obj(data3).save()
+    for r in range(0, 10):
+        _data = model_data_generator()
+        _data['id'] += 3
+        Model.parse_obj(_data).save()
+    res = Model.query(Rule(f"id < 3"))
     data = {m.id: m.dict() for m in res}
     assert data == {1: data1, 2: data2}
