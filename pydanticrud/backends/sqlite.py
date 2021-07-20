@@ -8,59 +8,8 @@ from rule_engine import Rule, ast, types
 from ..exceptions import DoesNotExist, ConditionCheckFailed
 
 
-def expression_to_condition(expr, key_name: Optional[str] = None):
-    if isinstance(expr, ast.LogicExpression):
-        left, l_params = expression_to_condition(expr.left, key_name)
-        right, r_params = expression_to_condition(expr.right, key_name)
-        if expr.type == "and":
-            return f"({left} AND {right})", l_params + r_params
-        if expr.type == "or":
-            return f"({left} OR {right})", l_params + r_params
-    if isinstance(expr, ast.ComparisonExpression):
-        left, l_params = expression_to_condition(expr.left, key_name)
-        right, r_params = expression_to_condition(expr.right, key_name)
-        if expr.type == "eq":
-            return (
-                f"{left} = {right}" if right is not None else f"{left} IS NULL",
-                l_params + r_params,
-            )
-        if expr.type == "ne":
-            return (
-                f"{left} != {right}" if right is not None else f"{left} IS NOT NULL",
-                l_params + r_params,
-            )
-    if isinstance(expr, ast.ArithmeticComparisonExpression):
-        left, l_params = expression_to_condition(expr.left, key_name)
-        right, r_params = expression_to_condition(expr.right, key_name)
-        op = dict(lt="<", gt=">", lte="<=", gte=">=")[expr.type]
-        return f"{left} {op} {right}", l_params + r_params
-    if isinstance(expr, ast.ContainsExpression):
-        container, container_params = expression_to_condition(expr.container, key_name)
-        member, member_params = expression_to_condition(expr.member, key_name)
-
-        clean_member_params = tuple(['%"' + member_params[0].strip('"') + '"%'])
-        return f"{container} like {member}", container_params + clean_member_params
-
-    if isinstance(expr, ast.SymbolExpression):
-        if expr.name == "null":
-            return None, ()
-        return expr.name, ()
-    if isinstance(expr, ast.NullExpression):
-        return None, ()
-    if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
-        return "?", tuple([expr.value])
-    if isinstance(expr, ast.FloatExpression):
-        val = expr.value
-        return "?", tuple([val if not types.is_integer_number(val) else int(val)])
-    raise NotImplementedError
-
-
-def rule_to_sqlite_expression(rule: Rule, key_name: Optional[str] = None):
-    return expression_to_condition(rule.statement.expression, key_name)
-
-
-# In SQLite, types and storage classes don't have a 1-1 mapping. And some types can be stored in multiple ways. Here we
-# list the python type name, it's
+# SQLite can store any type of serializable data and Python is pretty good about serializing data, but only some types
+# can maintain query-ability and can be included in conditions.
 SQLITE_NATIVE_TYPES = {
     'int',
     'float',
@@ -69,6 +18,7 @@ SQLITE_NATIVE_TYPES = {
     'datetime'
 }
 
+# We can add support for other data-types by specifying how they should be (de)serialized.
 ADAPTERS_CONVERTERS = {
     Decimal: (str, lambda x: Decimal(x.decode())),
 }
@@ -120,6 +70,60 @@ class Backend:
             in zip(res_tuple, self._columns.items())
         }
 
+    def _expression_to_condition(self, expr, key_name: Optional[str] = None):
+        if isinstance(expr, ast.LogicExpression):
+            left, l_params = self._expression_to_condition(expr.left, key_name)
+            right, r_params = self._expression_to_condition(expr.right, key_name)
+            if expr.type == "and":
+                return f"({left} AND {right})", l_params + r_params
+            if expr.type == "or":
+                return f"({left} OR {right})", l_params + r_params
+        if isinstance(expr, ast.ComparisonExpression):
+            left, l_params = self._expression_to_condition(expr.left, key_name)
+            right, r_params = self._expression_to_condition(expr.right, key_name)
+            if expr.type == "eq":
+                return (
+                    f"{left} = {right}" if right is not None else f"{left} IS NULL",
+                    l_params + r_params,
+                )
+            if expr.type == "ne":
+                return (
+                    f"{left} != {right}" if right is not None else f"{left} IS NOT NULL",
+                    l_params + r_params,
+                )
+        if isinstance(expr, ast.ArithmeticComparisonExpression):
+            left, l_params = self._expression_to_condition(expr.left, key_name)
+            right, r_params = self._expression_to_condition(expr.right, key_name)
+            op = dict(lt="<", gt=">", lte="<=", gte=">=")[expr.type]
+            return f"{left} {op} {right}", l_params + r_params
+        if isinstance(expr, ast.ContainsExpression):
+            container, container_params = self._expression_to_condition(expr.container, key_name)
+            member, member_params = self._expression_to_condition(expr.member, key_name)
+
+            clean_member_params = tuple(['%"' + member_params[0].strip('"') + '"%'])
+            return f"{container} like {member}", container_params + clean_member_params
+
+        if isinstance(expr, ast.SymbolExpression):
+            if expr.name == "null":
+                return None, ()
+            field_name = expr.name
+            if field_name not in self._columns:
+                raise SyntaxError(f"Cannot query on non-existent field: {field_name}")
+            if not self._columns[field_name]['sqlite_native']:
+                raise SyntaxError(f"Cannot query on non-native field: {field_name}")
+            return expr.name, ()
+        if isinstance(expr, ast.NullExpression):
+            return None, ()
+        if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
+            return "?", tuple([expr.value])
+        if isinstance(expr, ast.FloatExpression):
+            val = expr.value
+            return "?", tuple([val if not types.is_integer_number(val) else int(val)])
+        raise NotImplementedError
+
+    def _rule_to_sqlite_expression(self, rule: Rule, key_name: Optional[str] = None):
+        return self._expression_to_condition(rule.statement.expression, key_name)
+
     def initialize(self):
         field_defs = {field_name: f['python_type_name'].upper() for field_name, f in self._columns.items()}
         field_defs[self.hash_key] += " PRIMARY KEY"
@@ -135,7 +139,7 @@ class Backend:
         return res
 
     def query(self, expression) -> list:
-        expression, params = rule_to_sqlite_expression(expression)
+        expression, params = self._rule_to_sqlite_expression(expression)
         return [
             self._deserialize_record(rec)
             for rec in self._conn.execute(f"select * from {self.table_name} where {expression};", params)
@@ -163,7 +167,7 @@ class Backend:
 
             qs = ", ".join(f"{field} = ?" for field in fields)
             if condition:
-                condition_expr, condition_params = rule_to_sqlite_expression(condition)
+                condition_expr, condition_params = self._rule_to_sqlite_expression(condition)
             else:
                 condition_expr = f"{hash_key} = ?"
                 condition_params = tuple([key])
