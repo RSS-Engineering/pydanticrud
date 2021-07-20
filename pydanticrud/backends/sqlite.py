@@ -68,6 +68,7 @@ class Backend:
 
         self._conn = connect(cfg.database, detect_types=PARSE_DECLTYPES)
 
+
     def _deserialize_record(self, res_tuple) -> dict:
         """
         Match values with their field names into a dict
@@ -108,7 +109,7 @@ class Backend:
             container, container_params = self._expression_to_condition(expr.container, key_name)
             member, member_params = self._expression_to_condition(expr.member, key_name)
 
-            clean_member_params = tuple(['%"' + member_params[0].strip('"') + '"%'])
+            clean_member_params = tuple(['%' + member_params[0].strip('"') + '%'])
             return f"{container} like {member}", container_params + clean_member_params
 
         if isinstance(expr, ast.SymbolExpression):

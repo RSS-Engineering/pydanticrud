@@ -76,6 +76,28 @@ def test_save_and_get(model_in_db):
     assert b.dict() == data
 
 
+def test_rule_parsing_gives_sql_equality():
+    assert Model.__backend__._rule_to_sqlite_expression(Rule(f"id == 3")) == ('id = ?', (3,))
+
+
+def test_rule_parsing_gives_sql_gt():
+    assert Model.__backend__._rule_to_sqlite_expression(Rule(f"id > 3")) == ('id > ?', (3,))
+
+
+def test_rule_parsing_gives_sql_like():
+    assert Model.__backend__._rule_to_sqlite_expression(Rule(f"'o' in name")) == ('name like ?', ("%o%",))
+
+
+def test_rule_parsing_errors_on_querying_nonnative_fields():
+    with pytest.raises(SyntaxError):
+        Model.__backend__._rule_to_sqlite_expression(Rule(f"3 in items"))
+
+
+def test_rule_parsing_errors_on_querying_nonexistent_fields():
+    with pytest.raises(SyntaxError):
+        Model.__backend__._rule_to_sqlite_expression(Rule(f"nonexistent == 3"))
+
+
 def test_query(model_in_db):
     data1 = model_data_generator()
     data1['id'] = 1

@@ -72,7 +72,7 @@ There is plenty of room for improvement to PydantiCRUD.
 
 - Backend feature support not being consistent is the most egregious flaw that can be incrementally
 improved.
-
+- SQLite JSON1 extension support for more powerful queries.
 - Add more backends
 
   - REST API
