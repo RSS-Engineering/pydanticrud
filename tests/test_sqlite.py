@@ -1,5 +1,6 @@
 from typing import Dict, List
 from decimal import Decimal
+from datetime import datetime
 
 import pytest
 
@@ -12,6 +13,7 @@ class Model(BaseModel):
     value: int
     name: str
     total: float
+    timestamp: datetime
     sigfig: Decimal
     enabled: bool
     data: Dict[str, str]
@@ -37,7 +39,8 @@ def model_data_generator():
         value=random.randint(0, 100000),
         name=random.choice(("bob", "alice", "john", "jane")),
         total=round(random.random(), 9),
-        sigfig=Decimal(str(random.random())[:6]),
+        timestamp=datetime(2007, 2, 2, 2, 2, 0),
+        sigfig=Decimal(str(random.random())[:8]),
         enabled=random.choice((True, False)),
         data=dict(a=str(random.randint(0, 1000))),
         items=[random.randint(0, 100000), random.randint(0, 100000), random.randint(0, 100000)]

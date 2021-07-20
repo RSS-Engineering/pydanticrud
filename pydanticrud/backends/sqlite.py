@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, _GenericAlias
 import json
 from decimal import Decimal
-from sqlite3 import connect, PARSE_DECLTYPES
+from sqlite3 import connect, PARSE_DECLTYPES, register_converter, register_adapter
 
 from rule_engine import Rule, ast, types
 
@@ -59,79 +59,74 @@ def rule_to_sqlite_expression(rule: Rule, key_name: Optional[str] = None):
     return expression_to_condition(rule.statement.expression, key_name)
 
 
-SQLITE_TYPE_MAP = {
-    "int": "INTEGER",
-    "decimal": "DECIMAL",
-    "float": "REAL",
-    "double": "REAL",
-    "string": "TEXT",
-    "bool": "BOOL",
-    "object": "JSON",
-    "array": "JSON",
+# In SQLite, types and storage classes don't have a 1-1 mapping. And some types can be stored in multiple ways. Here we
+# list the python type name, it's
+SQLITE_NATIVE_TYPES = {
+    'int',
+    'float',
+    'bool',
+    'str',
+    'datetime'
+}
+
+ADAPTERS_CONVERTERS = {
+    Decimal: (str, lambda x: Decimal(x.decode())),
 }
 
 
-def smart_serialize_array(data):
-    return json.dumps(list(data))
+def get_column_data(field_type):
+    if type(field_type) is _GenericAlias:
+        field_type = field_type.__origin__
+    python_type_name = field_type.__name__
+    sqlite_native = python_type_name.lower() in SQLITE_NATIVE_TYPES
 
-
-SERIALIZE_MAP = {
-    "int": int,
-    "integer": int,
-    "number": float,
-    "decimal": str,
-    "double": str,
-    "string": str,
-    "boolean": lambda b: 1 if b else 0,
-    "object": json.dumps,
-    "array": smart_serialize_array,
-    "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
-}
-
-
-def do_nothing(x):
-    return x
-
-
-DESERIALIZE_MAP = {
-    "integer": do_nothing,
-    "number": float,
-    "decimal": Decimal,
-    "double": Decimal,
-    "string": do_nothing,
-    "boolean": do_nothing,
-    "object": json.loads,
-    "array": json.loads,
-    "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
-}
+    return dict(
+        python_type=field_type,
+        python_type_name=python_type_name,
+        sqlite_native=sqlite_native,
+    )
 
 
 class Backend:
     def __init__(self, cls):
         cfg = cls.Config
-        self.schema = cls.schema()
-        self.field_types = {
-            k: v.get("type", "json")
-            for k, v in self.schema["properties"].items()
-        }
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
+
+        self._columns = tuple(cls.__annotations__.keys())
+        self._columns = {
+            field_name: get_column_data(field_type)
+            for field_name, field_type in cls.__annotations__.items()
+        }
+        _non_native_column_types = set(
+            col['python_type']
+            for col in self._columns.values()
+            if not col['sqlite_native']
+        )
+        for python_type in _non_native_column_types:
+            adapter, converter = ADAPTERS_CONVERTERS.get(python_type, (json.dumps, json.loads))
+            register_adapter(python_type, adapter)
+            register_converter(python_type.__name__, converter)
+
         self._conn = connect(cfg.database, detect_types=PARSE_DECLTYPES)
 
-    def sql_field_defs(self):
-        schema = self.schema
+    def _deserialize_record(self, res_tuple) -> dict:
+        """
+        Match values with their field names into a dict
+        """
         return {
-            k: SQLITE_TYPE_MAP.get(v.get("type", "anyOf"), "TEXT")
-            for k, v in schema["properties"].items()
+            field_name: value
+            for value, (field_name, f)
+            in zip(res_tuple, self._columns.items())
         }
 
     def initialize(self):
-        field_defs = self.field_types
+        field_defs = {field_name: f['python_type_name'].upper() for field_name, f in self._columns.items()}
         field_defs[self.hash_key] += " PRIMARY KEY"
         fields = ", ".join(f"{k} {v}" for k, v in field_defs.items())
         self._conn.execute(f"CREATE TABLE IF NOT EXISTS {self.table_name} ({fields})")
 
-    def exists(self):
+    def exists(self) -> bool:
         c = self._conn.execute(
             "select sql from sqlite_master where type = 'table' and name = ?;",
             [self.table_name]
@@ -139,14 +134,11 @@ class Backend:
         res = bool(c.fetchone())
         return res
 
-    def query(self, expression):
+    def query(self, expression) -> list:
         expression, params = rule_to_sqlite_expression(expression)
-        res = list(self._conn.execute(f"select * from {self.table_name} where {expression};", params))
-        schema = self.schema["properties"]
-        fields = list(schema.keys())
         return [
-            {k: DESERIALIZE_MAP[schema[k]["type"]](v) for k, v in zip(fields, rec)}
-            for rec in res
+            self._deserialize_record(rec)
+            for rec in self._conn.execute(f"select * from {self.table_name} where {expression};", params)
         ]
 
     def get(self, item_key):
@@ -154,25 +146,16 @@ class Backend:
         res = c.fetchone()
         if not res:
             raise DoesNotExist
-        schema = self.schema["properties"]
-        fields = list(schema.keys())
-        return {k: DESERIALIZE_MAP[schema[k].get("type", "anyOf")](v) for k, v in zip(fields, res)}
+        return self._deserialize_record(res)
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         table_name = item.get_table_name()
         hash_key = item.Config.hash_key
         key = getattr(item, hash_key)
-        fields_def = self.sql_field_defs()
-        fields = tuple(fields_def.keys())
+        fields = tuple(self._columns.keys())
 
-        schema = item.schema()["properties"]
         item_data = item.dict()
-        values = tuple(
-            [
-                SERIALIZE_MAP[schema[field].get("type", "anyOf")](item_data[field])
-                for field in fields
-            ]
-        )
+        values = tuple([item_data[field] for field in fields])
         try:
             old_item = self.get(key)
             if condition and not condition.matches(old_item):
