@@ -101,6 +101,26 @@ class Backend:
             endpoint_url=getattr(cfg, "endpoint", None),
         )
 
+    def _serialize_record(self, data_dict) -> dict:
+        """
+        Apply converters to non-native types
+        """
+        schema = self.schema["properties"]
+        return {
+            field_name: SERIALIZE_MAP[schema[field_name].get("type", "anyOf")](value)
+            for field_name, value in data_dict.items()
+        }
+
+    def _deserialize_record(self, data_dict) -> dict:
+        """
+        Apply converters to non-native types
+        """
+        schema = self.schema["properties"]
+        return {
+            field_name: DESERIALIZE_MAP[schema[field_name]["type"]](value)
+            for field_name, value in data_dict.items()
+        }
+
     def initialize(self):
         schema = self.schema
         hash_key = self.hash_key
@@ -135,28 +155,18 @@ class Backend:
     def query(self, expression):
         table = self.get_table()
         resp = table.scan(FilterExpression=rule_to_boto_expression(expression, self.hash_key))
-        schema = self.schema["properties"]
-        return [
-            {k: DESERIALIZE_MAP[schema[k]["type"]](v) for k, v in rec.items()} for rec in resp['Items']
-        ]
+        return [self._deserialize_record(rec) for rec in resp["Items"]]
 
     def get(self, item_key):
         resp = self.get_table().get_item(Key={self.hash_key: item_key})
 
         if "Item" not in resp:
             raise DoesNotExist(f'{self.table_name} "{item_key}" does not exist')
-        schema = self.schema["properties"]
-        return {k: DESERIALIZE_MAP[schema[k].get("type", "anyOf")](v) for k, v in resp["Item"].items()}
+        return self._deserialize_record(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         hash_key = self.hash_key
-        item_data = item.dict()
-
-        schema = item.schema()["properties"]
-        data = {
-            field_name: SERIALIZE_MAP[schema[field_name].get("type", "anyOf")](value)
-            for field_name, value in item_data.items()
-        }
+        data = self._serialize_record(item.dict())
 
         try:
             if condition:

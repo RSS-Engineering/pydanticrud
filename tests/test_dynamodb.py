@@ -66,7 +66,7 @@ def test_query(dynamo):
     res = Model.query(Rule("name == 'two'"))
     data = {m.id: m.dict() for m in res}
 
-    data1['data'] = None  # This is a default value and should be populated as such
+    data1["data"] = None  # This is a default value and should be populated as such
     assert data == {1: data1}
 
     res = Model.query(Rule("name == 'four'"))
