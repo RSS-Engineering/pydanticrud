@@ -1,5 +1,6 @@
 from typing import Dict
 from decimal import Decimal
+from datetime import datetime
 
 import docker
 from pydanticrud import BaseModel, DynamoDbBackend
@@ -17,6 +18,7 @@ class Model(BaseModel):
     id: int
     name: str
     sigfig: Decimal
+    updated: datetime
     data: Dict[int, int] = None
 
     class Config:
@@ -49,7 +51,7 @@ def test_initialize_creates_table(dynamo):
 
 
 def test_save_and_get(dynamo):
-    data = dict(id=1, name="two", sigfig=Decimal("4.001"))
+    data = dict(id=1, name="two", updated=datetime.fromisoformat("2018-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))
     a = Model.parse_obj(data)
     a.save()
     b = Model.get("two")
@@ -57,12 +59,12 @@ def test_save_and_get(dynamo):
 
 
 def test_query(dynamo):
-    data1 = dict(id=1, name="two", sigfig=Decimal("4.001"))
-    data2 = dict(id=2, name="four", sigfig=Decimal("4.001"), data={1: 0})
+    data1 = dict(id=1, name="two", updated=datetime.fromisoformat("2018-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))
+    data2 = dict(id=2, name="four", updated=datetime.fromisoformat("2019-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"), data={1: 0})
     Model.parse_obj(data1).save()
     Model.parse_obj(data2).save()
-    Model.parse_obj(dict(id=3, name="six", sigfig=Decimal("4.001"))).save()
-    Model.parse_obj(dict(id=4, name="eight", sigfig=Decimal("4.001"))).save()
+    Model.parse_obj(dict(id=3, name="six", updated=datetime.fromisoformat("2020-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))).save()
+    Model.parse_obj(dict(id=4, name="eight", updated=datetime.fromisoformat("2021-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))).save()
     res = Model.query(Rule("name == 'two'"))
     data = {m.id: m.dict() for m in res}
 
@@ -72,3 +74,7 @@ def test_query(dynamo):
     res = Model.query(Rule("name == 'four'"))
     data = {m.id: m.dict() for m in res}
     assert data == {2: data2}
+
+    res = Model.query(Rule(f"updated <= '{datetime.fromisoformat('2019-08-01T16:01:00+00:00')}'"))
+    data = {m.id: m.dict() for m in res}
+    assert data == {1: data1, 2: data2}

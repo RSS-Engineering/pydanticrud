@@ -78,7 +78,7 @@ class Backend:
         if isinstance(expr, ast.ComparisonExpression):
             left, l_params = self._expression_to_condition(expr.left, key_name)
             right, r_params = self._expression_to_condition(expr.right, key_name)
-            op = dict(eq="=", ne="!=")[expr.type]
+            op = dict(eq="=", ne="!=", lt="<", gt=">")[expr.type]
             if right is None:
                 op = dict(eq="IS", ne="IS NOT")[expr.type]
                 right = "NULL"

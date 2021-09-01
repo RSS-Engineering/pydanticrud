@@ -26,9 +26,9 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         if expr.type == "ne":
             return left.ne(right) if right is not None else left.exists()
     if isinstance(expr, ast.ArithmeticComparisonExpression):
-        left, l_params = expression_to_condition(expr.left, key_name)
-        right, r_params = expression_to_condition(expr.right, key_name)
-        return getattr(left, expr.type)(right)
+        left = expression_to_condition(expr.left, key_name)
+        right = expression_to_condition(expr.right, key_name)
+        return getattr(left, {"le": "lte", "ge": "gte"}.get(expr.type, expr.type))(right)
     if isinstance(expr, ast.SymbolExpression):
         if key_name is not None and expr.name == key_name:
             return Key(expr.name)
