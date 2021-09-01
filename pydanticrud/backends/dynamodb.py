@@ -145,7 +145,9 @@ class Backend:
                 },
             ],
             TableName=self.table_name,
-            KeySchema=[{"AttributeName": hash_key, "KeyType": "HASH"},],
+            KeySchema=[
+                {"AttributeName": hash_key, "KeyType": "HASH"},
+            ],
             ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
         )
         table.wait_until_exists()
@@ -179,7 +181,8 @@ class Backend:
         try:
             if condition:
                 res = self.get_table().put_item(
-                    Item=data, ConditionExpression=rule_to_boto_expression(condition, hash_key),
+                    Item=data,
+                    ConditionExpression=rule_to_boto_expression(condition, hash_key),
                 )
             else:
                 res = self.get_table().put_item(Item=data)

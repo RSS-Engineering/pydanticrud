@@ -33,7 +33,9 @@ def get_column_data(field_type):
     sqlite_native = python_type_name.lower() in SQLITE_NATIVE_TYPES
 
     return ColumnMetaData(
-        python_type=field_type, python_type_name=python_type_name, sqlite_native=sqlite_native,
+        python_type=field_type,
+        python_type_name=python_type_name,
+        sqlite_native=sqlite_native,
     )
 
 
@@ -172,7 +174,8 @@ class Backend:
                 condition_expr = f"{hash_key} = ?"
                 condition_params = tuple([key])
             self._conn.execute(
-                f"UPDATE {table_name} SET {qs} WHERE {condition_expr};", values + condition_params,
+                f"UPDATE {table_name} SET {qs} WHERE {condition_expr};",
+                values + condition_params,
             )
             return True
         except DoesNotExist:

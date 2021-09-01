@@ -51,7 +51,12 @@ def test_initialize_creates_table(dynamo):
 
 
 def test_save_and_get(dynamo):
-    data = dict(id=1, name="two", updated=datetime.fromisoformat("2018-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))
+    data = dict(
+        id=1,
+        name="two",
+        updated=datetime.fromisoformat("2018-08-01T16:01:00+00:00"),
+        sigfig=Decimal("4.001"),
+    )
     a = Model.parse_obj(data)
     a.save()
     b = Model.get("two")
@@ -59,12 +64,37 @@ def test_save_and_get(dynamo):
 
 
 def test_query(dynamo):
-    data1 = dict(id=1, name="two", updated=datetime.fromisoformat("2018-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))
-    data2 = dict(id=2, name="four", updated=datetime.fromisoformat("2019-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"), data={1: 0})
+    data1 = dict(
+        id=1,
+        name="two",
+        updated=datetime.fromisoformat("2018-08-01T16:01:00+00:00"),
+        sigfig=Decimal("4.001"),
+    )
+    data2 = dict(
+        id=2,
+        name="four",
+        updated=datetime.fromisoformat("2019-08-01T16:01:00+00:00"),
+        sigfig=Decimal("4.001"),
+        data={1: 0},
+    )
     Model.parse_obj(data1).save()
     Model.parse_obj(data2).save()
-    Model.parse_obj(dict(id=3, name="six", updated=datetime.fromisoformat("2020-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))).save()
-    Model.parse_obj(dict(id=4, name="eight", updated=datetime.fromisoformat("2021-08-01T16:01:00+00:00"), sigfig=Decimal("4.001"))).save()
+    Model.parse_obj(
+        dict(
+            id=3,
+            name="six",
+            updated=datetime.fromisoformat("2020-08-01T16:01:00+00:00"),
+            sigfig=Decimal("4.001"),
+        )
+    ).save()
+    Model.parse_obj(
+        dict(
+            id=4,
+            name="eight",
+            updated=datetime.fromisoformat("2021-08-01T16:01:00+00:00"),
+            sigfig=Decimal("4.001"),
+        )
+    ).save()
     res = Model.query(Rule("name == 'two'"))
     data = {m.id: m.dict() for m in res}
 
