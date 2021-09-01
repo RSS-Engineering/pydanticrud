@@ -1,6 +1,7 @@
 from typing import Optional
 from decimal import Decimal
 import json
+from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -59,6 +60,13 @@ DYNAMO_TYPE_MAP = {
     "bool": "BOOL",
 }
 
+EPOCH = datetime.utcfromtimestamp(0)
+
+
+def _to_epoch_float(dt):
+    return (dt - EPOCH).total_seconds * 1000
+
+
 SERIALIZE_MAP = {
     "int": int,
     "integer": int,
@@ -67,6 +75,7 @@ SERIALIZE_MAP = {
     "double": str,
     "string": str,
     "object": json.dumps,
+    "datetime": _to_epoch_float,
     "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
@@ -85,6 +94,7 @@ DESERIALIZE_MAP = {
     "bool": bool,
     "object": json.loads,
     "array": json.loads,
+    "datetime": datetime.fromtimestamp,
     "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
