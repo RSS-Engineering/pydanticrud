@@ -1,5 +1,5 @@
 from typing import Optional
-from decimal import Decimal
+import logging
 import json
 from datetime import datetime
 
@@ -9,6 +9,8 @@ from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
 from ..exceptions import DoesNotExist, ConditionCheckFailed
+
+log = logging.getLogger(__name__)
 
 
 def expression_to_condition(expr, key_name: Optional[str] = None):
@@ -36,11 +38,13 @@ def expression_to_condition(expr, key_name: Optional[str] = None):
         return Attr(expr.name)
     if isinstance(expr, ast.NullExpression):
         return None
-    if isinstance(expr, (ast.StringExpression, ast.DatetimeExpression)):
+    if isinstance(expr, ast.DatetimeExpression):
+        return _to_epoch_float(expr.value)
+    if isinstance(expr, ast.StringExpression):
         return expr.value
     if isinstance(expr, ast.FloatExpression):
         val = expr.value
-        return "?", tuple([val if not types.is_integer_number(val) else int(val)])
+        return val if not types.is_integer_number(val) else int(val)
     if isinstance(expr, ast.ContainsExpression):
         container = expression_to_condition(expr.container, key_name)
         member = expression_to_condition(expr.member, key_name)
@@ -68,14 +72,11 @@ def _to_epoch_float(dt):
 
 
 SERIALIZE_MAP = {
-    "int": int,
-    "integer": int,
-    "number": Decimal,
-    "decimal": str,
-    "double": str,
-    "string": str,
+    "number": str,  # float or decimal
+    "string": lambda d: d.isoformat() if isinstance(d, datetime) else d,  # string, datetime
+    "boolean": lambda d: 1 if d else 0,
     "object": json.dumps,
-    "datetime": _to_epoch_float,
+    "array": json.dumps,
     "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
@@ -85,16 +86,11 @@ def do_nothing(x):
 
 
 DESERIALIZE_MAP = {
-    "int": do_nothing,
-    "integer": do_nothing,
     "number": float,
-    "decimal": Decimal,
-    "double": Decimal,
     "string": do_nothing,
-    "bool": bool,
+    "boolean": bool,
     "object": json.loads,
     "array": json.loads,
-    "datetime": datetime.fromtimestamp,
     "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
@@ -111,23 +107,39 @@ class Backend:
             endpoint_url=getattr(cfg, "endpoint", None),
         )
 
+    def _serialize_field(self, field_name, value):
+        schema = self.schema["properties"]
+        field_type = schema[field_name].get("type", "anyOf")
+        try:
+            return SERIALIZE_MAP[field_type](value)
+        except KeyError:
+            log.debug(f"No serializer for field_type {field_type}")
+            return value  # do nothing but log it.
+
     def _serialize_record(self, data_dict) -> dict:
         """
         Apply converters to non-native types
         """
-        schema = self.schema["properties"]
         return {
-            field_name: SERIALIZE_MAP[schema[field_name].get("type", "anyOf")](value)
+            field_name: self._serialize_field(field_name, value)
             for field_name, value in data_dict.items()
         }
+
+    def _deserialize_field(self, field_name, value):
+        schema = self.schema["properties"]
+        field_type = schema[field_name].get("type", "anyOf")
+        try:
+            return DESERIALIZE_MAP[field_type](value)
+        except KeyError:
+            log.debug(f"No deserializer for field_type {field_type}")
+            return value  # do nothing but log it.
 
     def _deserialize_record(self, data_dict) -> dict:
         """
         Apply converters to non-native types
         """
-        schema = self.schema["properties"]
         return {
-            field_name: DESERIALIZE_MAP[schema[field_name]["type"]](value)
+            field_name: self._deserialize_field(field_name, value)
             for field_name, value in data_dict.items()
         }
 
