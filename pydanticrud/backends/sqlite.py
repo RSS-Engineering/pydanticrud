@@ -1,8 +1,12 @@
-from typing import Optional, _GenericAlias
+from typing import Optional, Generic, get_type_hints
 import json
-from dataclasses import dataclass
 from decimal import Decimal
 from sqlite3 import connect, PARSE_DECLTYPES, register_converter, register_adapter
+
+try:
+    from dataclass import dataclass
+except ImportError:
+    from dataclasses import dataclass
 
 from rule_engine import Rule, ast, types
 
@@ -27,8 +31,8 @@ class ColumnMetaData:
 
 
 def get_column_data(field_type):
-    if type(field_type) is _GenericAlias:
-        field_type = field_type.__origin__
+    if hasattr(field_type, '__origin__'):
+        field_type = getattr(field_type, '__origin__')
     python_type_name = field_type.__name__
     sqlite_native = python_type_name.lower() in SQLITE_NATIVE_TYPES
 
@@ -45,10 +49,11 @@ class Backend:
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
 
-        self._columns = tuple(cls.__annotations__.keys())
+        type_hints = get_type_hints(cls)
+        self._columns = tuple(type_hints.keys())
         self._columns = {
             field_name: get_column_data(field_type)
-            for field_name, field_type in cls.__annotations__.items()
+            for field_name, field_type in type_hints.items()
         }
         _non_native_column_types = set(
             col.python_type for col in self._columns.values() if not col.sqlite_native
