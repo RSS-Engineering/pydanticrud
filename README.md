@@ -62,7 +62,7 @@ For example: querying on a non-hash_key in dynamo will run a scan and be slow.
 `endpoint` - specify an endpoint to use a local or non-AWS implementation of
 DynamoDB
 
-### SQLite
+### SQLite (Python 3.7+)
 
 `database` - the filename of the database file for SQLite to use
 
