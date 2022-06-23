@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import datetime
 
 import docker
-from pydanticrud import BaseModel, DynamoDbBackend
+from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from rule_engine import Rule
 
@@ -78,6 +78,16 @@ def dynamo():
         c.stop()
 
 
+@pytest.fixture(scope="module")
+def query_data():
+    presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
+    data = [datum for datum in [model_data_generator() for i in presets]]
+    del data[0]["data"]  # We need to have no data to ensure that default values work
+    for datum in data:
+        Model.parse_obj(datum).save()
+    return data
+
+
 def test_initialize_creates_table(dynamo):
     assert not Model.exists()
     Model.initialize()
@@ -95,28 +105,28 @@ def test_save_and_get(dynamo):
         Model.delete(data["name"])
 
 
-def test_query(dynamo):
-    presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
-    data = [datum for datum in [model_data_generator() for i in presets]]
-    del data[0]["data"]  # We need to have no data to ensure that default values work
-    for datum in data:
-        Model.parse_obj(datum).save()
-
-    res = Model.query(Rule(f"name == '{data[0]['name']}'"))
+def test_query(dynamo, query_data):
+    # Query based on the hash_key (no index needed)
+    res = Model.query(Rule(f"name == '{query_data[0]['name']}'"))
     res_data = {m.name: m.dict() for m in res}
-    data[0]["data"] = None  # This is a default value and should be populated as such
-    assert res_data == {data[0]["name"]: data[0]}
+    query_data[0]["data"] = None  # This is a default value and should be populated as such
+    assert res_data == {query_data[0]["name"]: query_data[0]}
 
-    res = Model.query(Rule(f"name == '{data[1]['name']}'"))
-    res_data = {m.name: m.dict() for m in res}
-    assert res_data == {data[1]["name"]: data[1]}
-
-    data_by_timestamp = data[:]
+    # Query based on the non-primary key with no index specified
+    data_by_timestamp = query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
+    with pytest.raises(ConditionCheckFailed, match=r'Index DEFAULT does not use \(\)'):
+        Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
+
+
+def test_query_scan(dynamo, query_data):
+    # Query(Scan) by setting index_name=None
+    data_by_timestamp = query_data[:]
+    data_by_timestamp.sort(key=lambda d: d["timestamp"])
+    res = Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), index_name=None)
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {d["name"]: d for d in data_by_timestamp[:2]}
 
-    res = Model.query(Rule(f"'{data[2]['items'][1]}' in items"))
+    res = Model.query(Rule(f"'{query_data[2]['items'][1]}' in items"), index_name=None)
     res_data = {m.name: m.dict() for m in res}
-    assert res_data == {data[2]["name"]: data[2]}
+    assert res_data == {query_data[2]["name"]: query_data[2]}

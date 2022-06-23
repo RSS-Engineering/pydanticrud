@@ -5,6 +5,7 @@ from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
+from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
@@ -13,42 +14,46 @@ from ..exceptions import DoesNotExist, ConditionCheckFailed
 log = logging.getLogger(__name__)
 
 
-def expression_to_condition(expr, key_name: Optional[str] = None):
+def expression_to_condition(expr, keys: Optional[tuple]):
     if isinstance(expr, ast.LogicExpression):
-        left = expression_to_condition(expr.left, key_name)
-        right = expression_to_condition(expr.right, key_name)
+        left, l_keys = expression_to_condition(expr.left, keys)
+        right, r_keys = expression_to_condition(expr.right, keys)
         if expr.type == "and":
-            return left and right
+            return left and right, l_keys + r_keys
         if expr.type == "or":
-            return left or right
+            return left or right, l_keys + r_keys
     if isinstance(expr, ast.ComparisonExpression):
-        left = expression_to_condition(expr.left, key_name)
-        right = expression_to_condition(expr.right, key_name)
+        left, l_keys = expression_to_condition(expr.left, keys)
+        right, r_keys = expression_to_condition(expr.right, keys)
+        exit_keys = l_keys + r_keys
         if expr.type == "eq":
-            return left.eq(right) if right is not None else left.not_exists()
+            if right is not None:
+                return left.eq(right), exit_keys
+            else:
+                return left.not_exists(), exit_keys
         if expr.type == "ne":
-            return left.ne(right) if right is not None else left.exists()
-    if isinstance(expr, ast.ArithmeticComparisonExpression):
-        left = expression_to_condition(expr.left, key_name)
-        right = expression_to_condition(expr.right, key_name)
-        return getattr(left, {"le": "lte", "ge": "gte"}.get(expr.type, expr.type))(right)
+            if right is not None:
+                return left.ne(right), exit_keys
+            else:
+                return left.exists(), exit_keys
+        return getattr(left, {"le": "lte", "ge": "gte"}.get(expr.type, expr.type))(right), exit_keys
     if isinstance(expr, ast.SymbolExpression):
-        if key_name is not None and expr.name == key_name:
-            return Key(expr.name)
-        return Attr(expr.name)
+        if keys is not None and expr.name in keys:
+            return Key(expr.name), tuple([expr.name])
+        return Attr(expr.name), tuple()
     if isinstance(expr, ast.NullExpression):
-        return None
+        return None, tuple()
     if isinstance(expr, ast.DatetimeExpression):
-        return _to_epoch_float(expr.value)
+        return _to_epoch_float(expr.value), tuple()
     if isinstance(expr, ast.StringExpression):
-        return expr.value
+        return expr.value, tuple()
     if isinstance(expr, ast.FloatExpression):
         val = expr.value
-        return val if not types.is_integer_number(val) else int(val)
+        return val if not types.is_integer_number(val) else int(val), tuple()
     if isinstance(expr, ast.ContainsExpression):
-        container = expression_to_condition(expr.container, key_name)
-        member = expression_to_condition(expr.member, key_name)
-        return container.contains(member)
+        container, l_keys = expression_to_condition(expr.container, keys)
+        member, r_keys = expression_to_condition(expr.member, keys)
+        return container.contains(member), l_keys + r_keys
     raise NotImplementedError
 
 
@@ -95,12 +100,21 @@ DESERIALIZE_MAP = {
 }
 
 
+def validate_index(indexes, index_name, keys_used: tuple):
+    if set(indexes.get(index_name)) != set(keys_used):
+        raise ConditionCheckFailed(f"Index {index_name or 'DEFAULT'} does not use {keys_used}")
+
+
 class Backend:
     def __init__(self, cls):
         cfg = cls.Config
         self.schema = cls.schema()
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
+
+        self.indexes = getattr(cfg, 'indexes', {})
+        self.indexes[""] = (self.hash_key, )
+
         self.dynamodb = boto3.resource(
             "dynamodb",
             region_name=getattr(cfg, "region", "us-east-2"),
@@ -174,9 +188,20 @@ class Backend:
         except ClientError:
             return False
 
-    def query(self, expression):
+    def query(self, expression, index_name: Optional[str] = ''):
         table = self.get_table()
-        resp = table.scan(FilterExpression=rule_to_boto_expression(expression, self.hash_key))
+        expr, keys_used = rule_to_boto_expression(expression, self.hash_key)
+        if index_name is not None:
+            validate_index(self.indexes, index_name, keys_used)
+
+            params = dict(
+                KeyConditionExpression=expr
+            )
+            if index_name:
+                params['index_name'] = index_name
+            resp = table.query(**params)
+        else:
+            resp = table.scan(FilterExpression=expr)
         return [self._deserialize_record(rec) for rec in resp["Items"]]
 
     def get(self, item_key):

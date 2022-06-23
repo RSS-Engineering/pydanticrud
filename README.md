@@ -62,6 +62,8 @@ For example: querying on a non-hash_key in dynamo will run a scan and be slow.
 `endpoint` - specify an endpoint to use a local or non-AWS implementation of
 DynamoDB
 
+`indexes` - (optional) specify a mapping of index-name to tuple(partition_key). Pass `index_name` to `Model.query()` to use an index.
+
 ### SQLite (Python 3.7+)
 
 `database` - the filename of the database file for SQLite to use
