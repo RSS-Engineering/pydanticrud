@@ -5,6 +5,7 @@ from datetime import datetime
 import docker
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
+from pydanticrud.exceptions import DoesNotExist
 from rule_engine import Rule
 
 
@@ -81,20 +82,26 @@ def dynamo():
 @pytest.fixture(scope="module")
 def query_data():
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
-    data = [datum for datum in [model_data_generator() for i in presets]]
+    data = [datum for datum in [model_data_generator(**i) for i in presets]]
     del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
         Model.parse_obj(datum).save()
-    return data
+    try:
+        yield data
+    finally:
+        for datum in data:
+            Model.delete(datum['name'])
 
 
 def test_initialize_creates_table(dynamo):
-    assert not Model.exists()
+    if Model.exists():
+        raise pytest.skip()
+
     Model.initialize()
     assert Model.exists()
 
 
-def test_save_and_get(dynamo):
+def test_save_get_delete(dynamo):
     data = model_data_generator()
     a = Model.parse_obj(data)
     a.save()
@@ -103,6 +110,9 @@ def test_save_and_get(dynamo):
         assert b.dict() == a.dict()
     finally:
         Model.delete(data["name"])
+    
+    with pytest.raises(DoesNotExist, match=f'modeltitle123 "{data["name"]}" does not exist'):
+        Model.get(data["name"])
 
 
 def test_query(dynamo, query_data):
