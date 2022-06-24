@@ -114,7 +114,7 @@ class Backend:
         self.table_name = cls.get_table_name()
 
         self.indexes = getattr(cfg, "indexes", {})
-        self.indexes[""] = (self.hash_key, )
+        self.indexes[""] = (self.hash_key,)
 
         self.dynamodb = boto3.resource(
             "dynamodb",
@@ -174,7 +174,8 @@ class Backend:
                     "AttributeType": DYNAMO_TYPE_MAP.get(
                         schema["properties"][key_name].get("type", "anyOf"), "S"
                     ),
-                } for key_name in key_names
+                }
+                for key_name in key_names
             ],
             TableName=self.table_name,
             KeySchema=[
@@ -187,15 +188,13 @@ class Backend:
                     "Projection": {
                         "ProjectionType": "ALL",
                     },
-                    "ProvisionedThroughput": {
-                        "ReadCapacityUnits": 1,
-                        "WriteCapacityUnits": 1
-                    },
-                    "KeySchema": [{
-                        "AttributeName": attr,
-                        "KeyType": ["HASH", "RANGE"][i]
-                    } for i, attr in enumerate(keys)]
-                } for index_name, keys in indexes.items()
+                    "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
+                    "KeySchema": [
+                        {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]}
+                        for i, attr in enumerate(keys)
+                    ],
+                }
+                for index_name, keys in indexes.items()
             ],
         )
         table.wait_until_exists()
@@ -212,14 +211,12 @@ class Backend:
 
     def query(self, expression, index_name: Optional[str] = ""):
         table = self.get_table()
-        possible_keys = self.indexes.get(index_name, (self.hash_key, ))
+        possible_keys = self.indexes.get(index_name, (self.hash_key,))
         expr, keys_used = rule_to_boto_expression(expression, possible_keys)
         if index_name is not None:
             validate_index(self.indexes, index_name, keys_used)
 
-            params = dict(
-                KeyConditionExpression=expr
-            )
+            params = dict(KeyConditionExpression=expr)
             if index_name:
                 params["IndexName"] = index_name
             resp = table.query(**params)
