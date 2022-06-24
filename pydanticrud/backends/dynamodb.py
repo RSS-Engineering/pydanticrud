@@ -57,13 +57,14 @@ def expression_to_condition(expr, keys: Optional[tuple]):
     raise NotImplementedError
 
 
-def rule_to_boto_expression(rule: Rule, key_name: Optional[str] = None):
-    return expression_to_condition(rule.statement.expression, key_name)
+def rule_to_boto_expression(rule: Rule, keys: Optional[tuple] = None):
+    return expression_to_condition(rule.statement.expression, keys)
 
 
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/dynamodb.html#valid-dynamodb-types
 DYNAMO_TYPE_MAP = {
-    "int": "N",
+    "integer": "N",
+    "decimal": "N",
     "decimal": "N",
     "double": "N",
     "bool": "BOOL",
@@ -112,7 +113,7 @@ class Backend:
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
 
-        self.indexes = getattr(cfg, 'indexes', {})
+        self.indexes = getattr(cfg, "indexes", {})
         self.indexes[""] = (self.hash_key, )
 
         self.dynamodb = boto3.resource(
@@ -160,21 +161,42 @@ class Backend:
     def initialize(self):
         schema = self.schema
         hash_key = self.hash_key
+        indexes = {k: v for k, v in self.indexes.items() if k}
+        key_names = set([self.hash_key])
+        for keys in indexes.values():
+            for key in keys:
+                key_names.add(key)
 
         table = self.dynamodb.create_table(
             AttributeDefinitions=[
                 {
-                    "AttributeName": hash_key,
+                    "AttributeName": key_name,
                     "AttributeType": DYNAMO_TYPE_MAP.get(
-                        schema["properties"][hash_key].get("type", "anyOf"), "S"
+                        schema["properties"][key_name].get("type", "anyOf"), "S"
                     ),
-                },
+                } for key_name in key_names
             ],
             TableName=self.table_name,
             KeySchema=[
                 {"AttributeName": hash_key, "KeyType": "HASH"},
             ],
             ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
+            GlobalSecondaryIndexes=[
+                {
+                    "IndexName": index_name,
+                    "Projection": {
+                        "ProjectionType": "ALL",
+                    },
+                    "ProvisionedThroughput": {
+                        "ReadCapacityUnits": 1,
+                        "WriteCapacityUnits": 1
+                    },
+                    "KeySchema": [{
+                        "AttributeName": attr,
+                        "KeyType": ["HASH", "RANGE"][i]
+                    } for i, attr in enumerate(keys)]
+                } for index_name, keys in indexes.items()
+            ],
         )
         table.wait_until_exists()
 
@@ -188,9 +210,10 @@ class Backend:
         except ClientError:
             return False
 
-    def query(self, expression, index_name: Optional[str] = ''):
+    def query(self, expression, index_name: Optional[str] = ""):
         table = self.get_table()
-        expr, keys_used = rule_to_boto_expression(expression, self.hash_key)
+        possible_keys = self.indexes.get(index_name, (self.hash_key, ))
+        expr, keys_used = rule_to_boto_expression(expression, possible_keys)
         if index_name is not None:
             validate_index(self.indexes, index_name, keys_used)
 
@@ -198,7 +221,7 @@ class Backend:
                 KeyConditionExpression=expr
             )
             if index_name:
-                params['index_name'] = index_name
+                params["IndexName"] = index_name
             resp = table.query(**params)
         else:
             resp = table.scan(FilterExpression=expr)

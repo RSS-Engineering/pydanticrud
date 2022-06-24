@@ -34,6 +34,9 @@ class Model(BaseModel):
         hash_key = "name"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
+        indexes = {
+            "by-id": ("id", )
+        }
 
 
 def model_data_generator(**kwargs):
@@ -128,6 +131,11 @@ def test_query(dynamo, query_data):
     with pytest.raises(ConditionCheckFailed, match=r'Index DEFAULT does not use \(\)'):
         Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
 
+    # Query based on the non-primary key with index
+    data_by_timestamp = query_data[:]
+    data_by_timestamp.sort(key=lambda d: d["timestamp"])
+    res = Model.query(Rule(f"id == {data_by_timestamp[2]['id']}"), index_name='by-id')
+    
 
 def test_query_scan(dynamo, query_data):
     # Query(Scan) by setting index_name=None
