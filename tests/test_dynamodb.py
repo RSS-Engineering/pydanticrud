@@ -54,7 +54,14 @@ def model_data_generator(**kwargs):
         value=random.randint(0, 100000),
         name=name,
         total=round(random.random(), 9),
-        timestamp=datetime(random.randint(2005, 2021), random.randint(1, 12), 2, 2, 2, 0),
+        timestamp=datetime(
+            random.randint(2005, 2021),
+            random.randint(1, 12),
+            random.randint(1, 28),
+            random.randint(1, 12),
+            random.randint(1, 59),
+            0
+        ),
         sigfig=Decimal(str(random.random())[:8]),
         enabled=random.choice((True, False)),
         data={random.randint(0, 1000): random.randint(0, 1000)},
@@ -135,9 +142,9 @@ def test_query_errors_with_nonprimary_key(dynamo, query_data):
 def test_query_with_indexed_hash_key(dynamo, query_data):
     data_by_timestamp = query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"id == {data_by_timestamp[2]['id']}"), index_name="by-id")
+    res = Model.query(Rule(f"id == {data_by_timestamp[0]['id']}"), index_name="by-id")
     res_data = {m.name: m.dict() for m in res}
-    assert res_data == {query_data[0]["name"]: query_data[0]}
+    assert res_data == {data_by_timestamp[0]["name"]: data_by_timestamp[0]}
 
 
 def test_query_scan(dynamo, query_data):
