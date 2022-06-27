@@ -135,14 +135,14 @@ def test_query_errors_with_nonprimary_key(dynamo, query_data):
     # Query based on the non-primary key with no index specified
     data_by_timestamp = query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    with pytest.raises(ConditionCheckFailed, match=r"Index DEFAULT does not use \(\)"):
+    with pytest.raises(ConditionCheckFailed, match=r"No keys in expression. Enable scan or add an index."):
         Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
 
 
 def test_query_with_indexed_hash_key(dynamo, query_data):
     data_by_timestamp = query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"id == {data_by_timestamp[0]['id']}"), index_name="by-id")
+    res = Model.query(Rule(f"id == {data_by_timestamp[0]['id']}"))
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {data_by_timestamp[0]["name"]: data_by_timestamp[0]}
 
@@ -150,12 +150,12 @@ def test_query_with_indexed_hash_key(dynamo, query_data):
 def test_query_scan(dynamo, query_data):
     data_by_timestamp = query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), index_name=None)
+    res = Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), scan=True)
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {d["name"]: d for d in data_by_timestamp[:2]}
 
 
 def test_query_scan_contains(dynamo, query_data):
-    res = Model.query(Rule(f"'{query_data[2]['items'][1]}' in items"), index_name=None)
+    res = Model.query(Rule(f"'{query_data[2]['items'][1]}' in items"), scan=True)
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {query_data[2]["name"]: query_data[2]}

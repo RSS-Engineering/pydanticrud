@@ -14,7 +14,7 @@ from ..exceptions import DoesNotExist, ConditionCheckFailed
 log = logging.getLogger(__name__)
 
 
-def expression_to_condition(expr, keys: Optional[tuple]):
+def expression_to_condition(expr, keys: set):
     if isinstance(expr, ast.LogicExpression):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
@@ -57,7 +57,7 @@ def expression_to_condition(expr, keys: Optional[tuple]):
     raise NotImplementedError
 
 
-def rule_to_boto_expression(rule: Rule, keys: Optional[tuple] = None):
+def rule_to_boto_expression(rule: Rule, keys: set):
     return expression_to_condition(rule.statement.expression, keys)
 
 
@@ -101,11 +101,6 @@ DESERIALIZE_MAP = {
 }
 
 
-def validate_index(indexes, index_name, keys_used: tuple):
-    if set(indexes.get(index_name)) != set(keys_used):
-        raise ConditionCheckFailed(f"Index {index_name or 'DEFAULT'} does not use {keys_used}")
-
-
 class Backend:
     def __init__(self, cls):
         cfg = cls.Config
@@ -114,7 +109,12 @@ class Backend:
         self.table_name = cls.get_table_name()
 
         self.indexes = getattr(cfg, "indexes", {})
-        self.indexes[""] = (self.hash_key,)
+        self.index_map = {(self.hash_key,): None}
+        self.possible_keys = set([self.hash_key])
+        for name, keys in self.indexes.items():
+            self.index_map[tuple(sorted(keys))] = name
+            for key in keys:
+                self.possible_keys.add(key)
 
         self.dynamodb = boto3.resource(
             "dynamodb",
@@ -209,13 +209,13 @@ class Backend:
         except ClientError:
             return False
 
-    def query(self, expression, index_name: Optional[str] = ""):
+    def query(self, expression, scan=False):
         table = self.get_table()
-        possible_keys = self.indexes.get(index_name, (self.hash_key,))
-        expr, keys_used = rule_to_boto_expression(expression, possible_keys)
-        if index_name is not None:
-            validate_index(self.indexes, index_name, keys_used)
-
+        expr, keys_used = rule_to_boto_expression(expression, self.possible_keys)
+        if not keys_used and not scan:
+            raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
+        if not scan:
+            index_name = self.index_map.get(tuple(sorted(keys_used)))
             params = dict(KeyConditionExpression=expr)
             if index_name:
                 params["IndexName"] = index_name
