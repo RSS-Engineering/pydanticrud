@@ -18,7 +18,7 @@ class FalseBackend:
 used_names = set()
 
 
-class Model(BaseModel):
+class SimpleKeyModel(BaseModel):
     id: int
     value: int
     name: str
@@ -88,74 +88,74 @@ def dynamo():
 
 
 @pytest.fixture(scope="module")
-def query_data():
+def simple_query_data():
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [model_data_generator(**i) for i in presets]]
     del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
-        Model.parse_obj(datum).save()
+        SimpleKeyModel.parse_obj(datum).save()
     try:
         yield data
     finally:
         for datum in data:
-            Model.delete(datum["name"])
+            SimpleKeyModel.delete(datum["name"])
 
 
 def test_initialize_creates_table(dynamo):
-    if Model.exists():
+    if SimpleKeyModel.exists():
         raise pytest.skip()
 
-    Model.initialize()
-    assert Model.exists()
+    SimpleKeyModel.initialize()
+    assert SimpleKeyModel.exists()
 
 
 def test_save_get_delete(dynamo):
     data = model_data_generator()
-    a = Model.parse_obj(data)
+    a = SimpleKeyModel.parse_obj(data)
     a.save()
     try:
-        b = Model.get(data["name"])
+        b = SimpleKeyModel.get(data["name"])
         assert b.dict() == a.dict()
     finally:
-        Model.delete(data["name"])
+        SimpleKeyModel.delete(data["name"])
 
     with pytest.raises(DoesNotExist, match=f'modeltitle123 "{data["name"]}" does not exist'):
-        Model.get(data["name"])
+        SimpleKeyModel.get(data["name"])
 
 
-def test_query_with_hash_key(dynamo, query_data):
+def test_query_with_hash_key(dynamo, simple_query_data):
     # Query based on the hash_key (no index needed)
-    res = Model.query(Rule(f"name == '{query_data[0]['name']}'"))
+    res = SimpleKeyModel.query(Rule(f"name == '{simple_query_data[0]['name']}'"))
     res_data = {m.name: m.dict() for m in res}
-    query_data[0]["data"] = None  # This is a default value and should be populated as such
-    assert res_data == {query_data[0]["name"]: query_data[0]}
+    simple_query_data[0]["data"] = None  # This is a default value and should be populated as such
+    assert res_data == {simple_query_data[0]["name"]: simple_query_data[0]}
 
 
-def test_query_errors_with_nonprimary_key(dynamo, query_data):
+def test_query_errors_with_nonprimary_key(dynamo, simple_query_data):
     # Query based on the non-primary key with no index specified
-    data_by_timestamp = query_data[:]
+    data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
     with pytest.raises(ConditionCheckFailed, match=r"No keys in expression. Enable scan or add an index."):
-        Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
+        SimpleKeyModel.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
 
 
-def test_query_with_indexed_hash_key(dynamo, query_data):
-    data_by_timestamp = query_data[:]
+def test_query_with_indexed_hash_key(dynamo, simple_query_data):
+    data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"id == {data_by_timestamp[0]['id']}"))
+    res = SimpleKeyModel.query(Rule(f"id == {data_by_timestamp[0]['id']}"))
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {data_by_timestamp[0]["name"]: data_by_timestamp[0]}
 
 
-def test_query_scan(dynamo, query_data):
-    data_by_timestamp = query_data[:]
+def test_query_scan(dynamo, simple_query_data):
+    data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), scan=True)
+    res = SimpleKeyModel.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), scan=True)
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {d["name"]: d for d in data_by_timestamp[:2]}
 
 
-def test_query_scan_contains(dynamo, query_data):
-    res = Model.query(Rule(f"'{query_data[2]['items'][1]}' in items"), scan=True)
+def test_query_scan_contains(dynamo, simple_query_data):
+    res = SimpleKeyModel.query(Rule(f"'{simple_query_data[2]['items'][1]}' in items"), scan=True)
     res_data = {m.name: m.dict() for m in res}
-    assert res_data == {query_data[2]["name"]: query_data[2]}
+    assert res_data == {simple_query_data[2]["name"]: simple_query_data[2]}

@@ -5,7 +5,6 @@ from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
-from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
@@ -19,13 +18,13 @@ def expression_to_condition(expr, keys: set):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
         if expr.type == "and":
-            return left and right, l_keys + r_keys
+            return left and right, l_keys | r_keys
         if expr.type == "or":
-            return left or right, l_keys + r_keys
+            return left or right, l_keys | r_keys
     if isinstance(expr, ast.ComparisonExpression):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
-        exit_keys = l_keys + r_keys
+        exit_keys = l_keys | r_keys
         if expr.type == "eq":
             if right is not None:
                 return left.eq(right), exit_keys
@@ -39,21 +38,21 @@ def expression_to_condition(expr, keys: set):
         return getattr(left, {"le": "lte", "ge": "gte"}.get(expr.type, expr.type))(right), exit_keys
     if isinstance(expr, ast.SymbolExpression):
         if keys is not None and expr.name in keys:
-            return Key(expr.name), tuple([expr.name])
-        return Attr(expr.name), tuple()
+            return Key(expr.name), {expr.name}
+        return Attr(expr.name), set()
     if isinstance(expr, ast.NullExpression):
-        return None, tuple()
+        return None, set()
     if isinstance(expr, ast.DatetimeExpression):
-        return _to_epoch_float(expr.value), tuple()
+        return _to_epoch_float(expr.value), set()
     if isinstance(expr, ast.StringExpression):
-        return expr.value, tuple()
+        return expr.value, set()
     if isinstance(expr, ast.FloatExpression):
         val = expr.value
-        return val if not types.is_integer_number(val) else int(val), tuple()
+        return val if not types.is_integer_number(val) else int(val), set()
     if isinstance(expr, ast.ContainsExpression):
         container, l_keys = expression_to_condition(expr.container, keys)
         member, r_keys = expression_to_condition(expr.member, keys)
-        return container.contains(member), l_keys + r_keys
+        return container.contains(member), l_keys | r_keys
     raise NotImplementedError
 
 
@@ -64,7 +63,6 @@ def rule_to_boto_expression(rule: Rule, keys: set):
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/dynamodb.html#valid-dynamodb-types
 DYNAMO_TYPE_MAP = {
     "integer": "N",
-    "decimal": "N",
     "decimal": "N",
     "double": "N",
     "bool": "BOOL",
@@ -106,13 +104,18 @@ class Backend:
         cfg = cls.Config
         self.schema = cls.schema()
         self.hash_key = cfg.hash_key
+        self.range_key = getattr(cfg, 'range_key', None)
         self.table_name = cls.get_table_name()
 
         self.indexes = getattr(cfg, "indexes", {})
         self.index_map = {(self.hash_key,): None}
-        self.possible_keys = set([self.hash_key])
+        self.possible_keys = {self.hash_key}
+        if self.range_key:
+            self.possible_keys.add(self.range_key)
+            self.index_map = {(self.hash_key, self.range_key): None}
+
         for name, keys in self.indexes.items():
-            self.index_map[tuple(sorted(keys))] = name
+            self.index_map[keys] = name
             for key in keys:
                 self.possible_keys.add(key)
 
@@ -160,26 +163,23 @@ class Backend:
 
     def initialize(self):
         schema = self.schema
-        hash_key = self.hash_key
         indexes = {k: v for k, v in self.indexes.items() if k}
-        key_names = set([self.hash_key])
-        for keys in indexes.values():
-            for key in keys:
-                key_names.add(key)
+        key_names = {key for key in [self.hash_key, self.range_key] if key}
 
         table = self.dynamodb.create_table(
             AttributeDefinitions=[
                 {
-                    "AttributeName": key_name,
+                    "AttributeName": attr,
                     "AttributeType": DYNAMO_TYPE_MAP.get(
-                        schema["properties"][key_name].get("type", "anyOf"), "S"
+                        schema["properties"][attr].get("type", "anyOf"), "S"
                     ),
                 }
-                for key_name in key_names
+                for attr in self.possible_keys
             ],
             TableName=self.table_name,
             KeySchema=[
-                {"AttributeName": hash_key, "KeyType": "HASH"},
+                {"AttributeName": key, "KeyType": ["HASH", "RANGE"][i]}
+                for i, key in enumerate(key_names)
             ],
             ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
             GlobalSecondaryIndexes=[
@@ -215,7 +215,7 @@ class Backend:
         if not keys_used and not scan:
             raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
         if not scan:
-            index_name = self.index_map.get(tuple(sorted(keys_used)))
+            index_name = self.index_map.get(tuple(keys_used))
             params = dict(KeyConditionExpression=expr)
             if index_name:
                 params["IndexName"] = index_name
