@@ -99,6 +99,22 @@ DESERIALIZE_MAP = {
 }
 
 
+def index_definition(index_name, keys, gsi=False):
+    schema = {
+        "IndexName": index_name,
+        "Projection": {
+            "ProjectionType": "ALL",
+        },
+        "KeySchema": [
+            {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]}
+            for i, attr in enumerate(keys)
+        ],
+    }
+    if gsi:
+        schema["ProvisionedThroughput"] = {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1}
+    return schema
+
+
 class Backend:
     def __init__(self, cls):
         cfg = cls.Config
@@ -107,14 +123,15 @@ class Backend:
         self.range_key = getattr(cfg, 'range_key', None)
         self.table_name = cls.get_table_name()
 
-        self.indexes = getattr(cfg, "indexes", {})
+        self.local_indexes = getattr(cfg, "local_indexes", {})
+        self.global_indexes = getattr(cfg, "global_indexes", {})
         self.index_map = {(self.hash_key,): None}
         self.possible_keys = {self.hash_key}
         if self.range_key:
             self.possible_keys.add(self.range_key)
             self.index_map = {(self.hash_key, self.range_key): None}
 
-        for name, keys in self.indexes.items():
+        for name, keys in dict(**self.local_indexes, **self.global_indexes).items():
             self.index_map[keys] = name
             for key in keys:
                 self.possible_keys.add(key)
@@ -163,10 +180,11 @@ class Backend:
 
     def initialize(self):
         schema = self.schema
-        indexes = {k: v for k, v in self.indexes.items() if k}
-        key_names = {key for key in [self.hash_key, self.range_key] if key}
+        gsies = {k: v for k, v in self.global_indexes.items()}
+        lsies = {k: v for k, v in self.local_indexes.items()}
+        key_names = [key for key in [self.hash_key, self.range_key] if key]
 
-        table = self.dynamodb.create_table(
+        table_schema = dict(
             AttributeDefinitions=[
                 {
                     "AttributeName": attr,
@@ -182,21 +200,18 @@ class Backend:
                 for i, key in enumerate(key_names)
             ],
             ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": index_name,
-                    "Projection": {
-                        "ProjectionType": "ALL",
-                    },
-                    "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
-                    "KeySchema": [
-                        {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]}
-                        for i, attr in enumerate(keys)
-                    ],
-                }
-                for index_name, keys in indexes.items()
-            ],
         )
+        if lsies:
+            table_schema['LocalSecondaryIndexes'] = [
+                index_definition(index_name, keys)
+                for index_name, keys in lsies.items()
+            ]
+        if gsies:
+            table_schema['GlobalSecondaryIndexes'] = [
+                index_definition(index_name, keys, gsi=True)
+                for index_name, keys in gsies.items()
+            ]
+        table = self.dynamodb.create_table(**table_schema)
         table.wait_until_exists()
 
     def get_table(self):

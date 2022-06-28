@@ -34,7 +34,7 @@ class SimpleKeyModel(BaseModel):
         hash_key = "name"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
-        indexes = {"by-id": ("id",)}
+        global_indexes = {"by-id": ("id",)}
 
 
 def model_data_generator(**kwargs):
