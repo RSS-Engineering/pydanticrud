@@ -1,14 +1,15 @@
 # PydantiCRUD
+
 Supercharge your Pydantic models with CRUD methods and a pluggable backend
 
-pydanticrud let's you add a few details to your pydantic models to get basic 
+pydanticrud let's you add a few details to your pydantic models to get basic
 CRUD methods automatically built into your models for the backend of your
 choice.
 
 ## Usage
 
 ```python
-from pydanticrud import BaseModel, SqliteBackend
+from pydanticrud import BaseModel, DynamoDbBackend
 
 class User(BaseModel):
     id: int
@@ -16,15 +17,15 @@ class User(BaseModel):
 
     class Config:
         title = 'User'
-        backend = SqliteBackend
+        backend = DynamoDbBackend
         hash_key = 'id'
-        database = ":memory:"
 ```
 
 First, use the `BaseModel` from `pydanticrud` instead of `pydantic`.
 
-Next add your backend to your model's `Config` class. PydantiCRUD provides SQLite
-and DynamoDB backends. You can provide your own if you like.
+Next add your backend to your model's `Config` class. PydantiCRUD is geared
+toward DynamoDB but provides SQLite for lighter-weight usage. You can provide
+your own if you like.
 
 Finally, add appropriate members to the `Config` class for the chosen backend.
 
@@ -59,8 +60,10 @@ For example: querying on a non-hash_key in dynamo will run a scan and be slow.
 
 `region` - (optional) specify the region to access dynamodb in.
 
-`endpoint` - specify an endpoint to use a local or non-AWS implementation of
+`endpoint` - (optional) specify an endpoint to use a local or non-AWS implementation of
 DynamoDB
+
+`indexes` - (optional) specify a mapping of index-name to tuple(partition_key). Pass `index_name` to `Model.query()` to use an index.
 
 ### SQLite (Python 3.7+)
 
@@ -70,8 +73,8 @@ DynamoDB
 
 There is plenty of room for improvement to PydantiCRUD.
 
-- Backend feature support not being consistent is the most egregious flaw that can be incrementally
-improved.
+- Backend feature support not being consistent is the most egregious flaw that
+can be incrementally improved.
 - SQLite JSON1 extension support for more powerful queries.
 - Add more backends
 
