@@ -1,11 +1,11 @@
 from typing import Optional
+from collections.abc import Mapping, Iterable
 import logging
 import json
 from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
-from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
@@ -19,13 +19,13 @@ def expression_to_condition(expr, keys: set):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
         if expr.type == "and":
-            return left and right, l_keys + r_keys
+            return left & right, l_keys | r_keys
         if expr.type == "or":
-            return left or right, l_keys + r_keys
+            return left | right, l_keys | r_keys
     if isinstance(expr, ast.ComparisonExpression):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
-        exit_keys = l_keys + r_keys
+        exit_keys = l_keys | r_keys
         if expr.type == "eq":
             if right is not None:
                 return left.eq(right), exit_keys
@@ -39,21 +39,21 @@ def expression_to_condition(expr, keys: set):
         return getattr(left, {"le": "lte", "ge": "gte"}.get(expr.type, expr.type))(right), exit_keys
     if isinstance(expr, ast.SymbolExpression):
         if keys is not None and expr.name in keys:
-            return Key(expr.name), tuple([expr.name])
-        return Attr(expr.name), tuple()
+            return Key(expr.name), {expr.name}
+        return Attr(expr.name), set()
     if isinstance(expr, ast.NullExpression):
-        return None, tuple()
+        return None, set()
     if isinstance(expr, ast.DatetimeExpression):
-        return _to_epoch_float(expr.value), tuple()
+        return _to_epoch_float(expr.value), set()
     if isinstance(expr, ast.StringExpression):
-        return expr.value, tuple()
+        return expr.value, set()
     if isinstance(expr, ast.FloatExpression):
         val = expr.value
-        return val if not types.is_integer_number(val) else int(val), tuple()
+        return val if not types.is_integer_number(val) else int(val), set()
     if isinstance(expr, ast.ContainsExpression):
         container, l_keys = expression_to_condition(expr.container, keys)
         member, r_keys = expression_to_condition(expr.member, keys)
-        return container.contains(member), l_keys + r_keys
+        return container.contains(member), l_keys | r_keys
     raise NotImplementedError
 
 
@@ -64,7 +64,6 @@ def rule_to_boto_expression(rule: Rule, keys: set):
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/dynamodb.html#valid-dynamodb-types
 DYNAMO_TYPE_MAP = {
     "integer": "N",
-    "decimal": "N",
     "decimal": "N",
     "double": "N",
     "bool": "BOOL",
@@ -101,18 +100,40 @@ DESERIALIZE_MAP = {
 }
 
 
+def index_definition(index_name, keys, gsi=False):
+    schema = {
+        "IndexName": index_name,
+        "Projection": {
+            "ProjectionType": "ALL",
+        },
+        "KeySchema": [
+            {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]}
+            for i, attr in enumerate(keys)
+        ],
+    }
+    if gsi:
+        schema["ProvisionedThroughput"] = {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1}
+    return schema
+
+
 class Backend:
     def __init__(self, cls):
         cfg = cls.Config
         self.schema = cls.schema()
         self.hash_key = cfg.hash_key
+        self.range_key = getattr(cfg, 'range_key', None)
         self.table_name = cls.get_table_name()
 
-        self.indexes = getattr(cfg, "indexes", {})
+        self.local_indexes = getattr(cfg, "local_indexes", {})
+        self.global_indexes = getattr(cfg, "global_indexes", {})
         self.index_map = {(self.hash_key,): None}
-        self.possible_keys = set([self.hash_key])
-        for name, keys in self.indexes.items():
-            self.index_map[tuple(sorted(keys))] = name
+        self.possible_keys = {self.hash_key}
+        if self.range_key:
+            self.possible_keys.add(self.range_key)
+            self.index_map = {(self.hash_key, self.range_key): None}
+
+        for name, keys in dict(**self.local_indexes, **self.global_indexes).items():
+            self.index_map[keys] = name
             for key in keys:
                 self.possible_keys.add(key)
 
@@ -158,45 +179,53 @@ class Backend:
             for field_name, value in data_dict.items()
         }
 
+    def _key_param_to_dict(self, key):
+        _key = {
+            self.hash_key: key,
+        }
+        if self.range_key:
+            if not isinstance(key, tuple) or not len(key) == 2:
+                raise ValueError(f"{self.table_name} needs both a hash_key and a range_key to delete a record.")
+            _key = {
+                self.hash_key: key[0],
+                self.range_key: key[1]
+            }
+        return _key
+
     def initialize(self):
         schema = self.schema
-        hash_key = self.hash_key
-        indexes = {k: v for k, v in self.indexes.items() if k}
-        key_names = set([self.hash_key])
-        for keys in indexes.values():
-            for key in keys:
-                key_names.add(key)
+        gsies = {k: v for k, v in self.global_indexes.items()}
+        lsies = {k: v for k, v in self.local_indexes.items()}
+        key_names = [key for key in [self.hash_key, self.range_key] if key]
 
-        table = self.dynamodb.create_table(
+        table_schema = dict(
             AttributeDefinitions=[
                 {
-                    "AttributeName": key_name,
+                    "AttributeName": attr,
                     "AttributeType": DYNAMO_TYPE_MAP.get(
-                        schema["properties"][key_name].get("type", "anyOf"), "S"
+                        schema["properties"][attr].get("type", "anyOf"), "S"
                     ),
                 }
-                for key_name in key_names
+                for attr in self.possible_keys
             ],
             TableName=self.table_name,
             KeySchema=[
-                {"AttributeName": hash_key, "KeyType": "HASH"},
+                {"AttributeName": key, "KeyType": ["HASH", "RANGE"][i]}
+                for i, key in enumerate(key_names)
             ],
             ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
-            GlobalSecondaryIndexes=[
-                {
-                    "IndexName": index_name,
-                    "Projection": {
-                        "ProjectionType": "ALL",
-                    },
-                    "ProvisionedThroughput": {"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
-                    "KeySchema": [
-                        {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]}
-                        for i, attr in enumerate(keys)
-                    ],
-                }
-                for index_name, keys in indexes.items()
-            ],
         )
+        if lsies:
+            table_schema['LocalSecondaryIndexes'] = [
+                index_definition(index_name, keys)
+                for index_name, keys in lsies.items()
+            ]
+        if gsies:
+            table_schema['GlobalSecondaryIndexes'] = [
+                index_definition(index_name, keys, gsi=True)
+                for index_name, keys in gsies.items()
+            ]
+        table = self.dynamodb.create_table(**table_schema)
         table.wait_until_exists()
 
     def get_table(self):
@@ -215,31 +244,38 @@ class Backend:
         if not keys_used and not scan:
             raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
         if not scan:
-            index_name = self.index_map.get(tuple(sorted(keys_used)))
+            key_pair = tuple(keys_used)
+            index_name = self.index_map.get(key_pair) or self.index_map.get(reversed(key_pair))
             params = dict(KeyConditionExpression=expr)
             if index_name:
                 params["IndexName"] = index_name
+            elif not keys_used.issubset({self.hash_key, self.range_key}):
+                raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
             resp = table.query(**params)
         else:
             resp = table.scan(FilterExpression=expr)
         return [self._deserialize_record(rec) for rec in resp["Items"]]
 
-    def get(self, item_key):
-        resp = self.get_table().get_item(Key={self.hash_key: item_key})
+    def get(self, key):
+        _key = self._key_param_to_dict(key)
+        resp = self.get_table().get_item(Key=_key)
 
         if "Item" not in resp:
-            raise DoesNotExist(f'{self.table_name} "{item_key}" does not exist')
+            if not self.range_key:
+                _key = key
+            raise DoesNotExist(f'{self.table_name} "{_key}" does not exist')
+
         return self._deserialize_record(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        hash_key = self.hash_key
         data = self._serialize_record(item.dict())
 
         try:
             if condition:
+                expr, _ = rule_to_boto_expression(condition, self.possible_keys)
                 res = self.get_table().put_item(
                     Item=data,
-                    ConditionExpression=rule_to_boto_expression(condition, hash_key),
+                    ConditionExpression=expr,
                 )
             else:
                 res = self.get_table().put_item(Item=data)
@@ -250,5 +286,5 @@ class Backend:
                 raise ConditionCheckFailed()
             raise e
 
-    def delete(self, item_key: str):
-        self.get_table().delete_item(Key={self.hash_key: item_key})
+    def delete(self, key):
+        self.get_table().delete_item(Key=self._key_param_to_dict(key))

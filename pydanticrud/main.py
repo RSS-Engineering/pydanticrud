@@ -31,8 +31,8 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
         return [cls.parse_obj(i) for i in res]
 
     @classmethod
-    def get(cls, item_key):
-        return cls.parse_obj(cls.__backend__.get(item_key))
+    def get(cls, *args, **kwargs):
+        return cls.parse_obj(cls.__backend__.get(*args, **kwargs))
 
     def save(self) -> bool:
         # Parse the new obj to trigger validation
@@ -42,5 +42,5 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
         return self.__class__.__backend__.save(self)
 
     @classmethod
-    def delete(cls, item_key):
-        cls.__backend__.delete(item_key)
+    def delete(cls, *args, **kwargs):
+        cls.__backend__.delete(*args, **kwargs)

@@ -1,12 +1,16 @@
 from typing import Dict, List
 from decimal import Decimal
 from datetime import datetime
+from uuid import uuid4
+import random
 
 import docker
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist
 from rule_engine import Rule
+
+from .random_values import random_datetime, random_unique_name, future_datetime
 
 
 class FalseBackend:
@@ -15,10 +19,7 @@ class FalseBackend:
         pass
 
 
-used_names = set()
-
-
-class Model(BaseModel):
+class SimpleKeyModel(BaseModel):
     id: int
     value: int
     name: str
@@ -34,38 +35,54 @@ class Model(BaseModel):
         hash_key = "name"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
-        indexes = {"by-id": ("id",)}
+        global_indexes = {"by-id": ("id",)}
 
 
-def model_data_generator(**kwargs):
-    global used_names
-    import random
+class ComplexKeyModel(BaseModel):
+    account: str
+    sort_date_key: str
+    expires: str
+    category_id: int
+    notification_id: str
+    thread_id: str
 
-    first_names = ("John", "Andy", "Joe", "Bob", "Alice", "Jane", "Bart")
-    last_names = ("Johnson", "Smith", "Williams", "Doe")
+    class Config:
+        title = "ComplexModelTitle123"
+        hash_key = "account"
+        range_key = "sort_date_key"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
+        local_indexes = {
+            "by-category": ("account", "category_id"),
+            "by-notification": ("account", "notification_id"),
+            "by-thread": ("account", "thread_id")
+        }
 
-    name = ""
-    while not name or name in used_names:
-        name = f"{random.choice(first_names)} {random.choice(last_names)}"
-    used_names.add(name)
 
+def simple_model_data_generator(**kwargs):
     data = dict(
         id=random.randint(0, 100000),
         value=random.randint(0, 100000),
-        name=name,
+        name=random_unique_name(),
         total=round(random.random(), 9),
-        timestamp=datetime(
-            random.randint(2005, 2021),
-            random.randint(1, 12),
-            random.randint(1, 28),
-            random.randint(1, 12),
-            random.randint(1, 59),
-            0
-        ),
+        timestamp=random_datetime(),
         sigfig=Decimal(str(random.random())[:8]),
         enabled=random.choice((True, False)),
         data={random.randint(0, 1000): random.randint(0, 1000)},
         items=[random.randint(0, 100000), random.randint(0, 100000), random.randint(0, 100000)],
+    )
+    data.update(kwargs)
+    return data
+
+
+def complex_model_data_generator(**kwargs):
+    data = dict(
+        account=str(uuid4()),
+        sort_date_key=random_datetime().isoformat(),
+        expires=future_datetime(days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)).isoformat(),
+        category_id=random.randint(1, 15),
+        notification_id=str(uuid4()),
+        thread_id=str(uuid4())
     )
     data.update(kwargs)
     return data
@@ -88,74 +105,150 @@ def dynamo():
 
 
 @pytest.fixture(scope="module")
-def query_data():
+def simple_table(dynamo):
+    if not SimpleKeyModel.exists():
+        SimpleKeyModel.initialize()
+        assert SimpleKeyModel.exists()
+    return SimpleKeyModel
+
+
+@pytest.fixture(scope="module")
+def complex_table(dynamo):
+    if not ComplexKeyModel.exists():
+        ComplexKeyModel.initialize()
+        assert ComplexKeyModel.exists()
+    return ComplexKeyModel
+
+
+@pytest.fixture(scope="module")
+def simple_query_data(simple_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
-    data = [datum for datum in [model_data_generator(**i) for i in presets]]
+    data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
     del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
-        Model.parse_obj(datum).save()
+        SimpleKeyModel.parse_obj(datum).save()
     try:
         yield data
     finally:
         for datum in data:
-            Model.delete(datum["name"])
+            SimpleKeyModel.delete(datum["name"])
 
 
-def test_initialize_creates_table(dynamo):
-    if Model.exists():
-        raise pytest.skip()
+@pytest.fixture(scope="module")
+def complex_query_data(complex_table):
+    presets = [dict()] * 20
+    data = [datum for datum in [complex_model_data_generator(**i) for i in presets]]
+    for datum in data:
+        ComplexKeyModel.parse_obj(datum).save()
+    try:
+        yield data
+    finally:
+        for datum in data:
+            ComplexKeyModel.delete((datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key]))
 
-    Model.initialize()
-    assert Model.exists()
 
-
-def test_save_get_delete(dynamo):
-    data = model_data_generator()
-    a = Model.parse_obj(data)
+def test_save_get_delete_simple(dynamo, simple_table):
+    data = simple_model_data_generator()
+    a = SimpleKeyModel.parse_obj(data)
     a.save()
     try:
-        b = Model.get(data["name"])
+        b = SimpleKeyModel.get(data["name"])
         assert b.dict() == a.dict()
     finally:
-        Model.delete(data["name"])
+        SimpleKeyModel.delete(data["name"])
 
     with pytest.raises(DoesNotExist, match=f'modeltitle123 "{data["name"]}" does not exist'):
-        Model.get(data["name"])
+        SimpleKeyModel.get(data["name"])
 
 
-def test_query_with_hash_key(dynamo, query_data):
-    # Query based on the hash_key (no index needed)
-    res = Model.query(Rule(f"name == '{query_data[0]['name']}'"))
+def test_query_with_hash_key_simple(dynamo, simple_query_data):
+    res = SimpleKeyModel.query(Rule(f"name == '{simple_query_data[0]['name']}'"))
     res_data = {m.name: m.dict() for m in res}
-    query_data[0]["data"] = None  # This is a default value and should be populated as such
-    assert res_data == {query_data[0]["name"]: query_data[0]}
+    simple_query_data[0]["data"] = None  # This is a default value and should be populated as such
+    assert res_data == {simple_query_data[0]["name"]: simple_query_data[0]}
 
 
-def test_query_errors_with_nonprimary_key(dynamo, query_data):
-    # Query based on the non-primary key with no index specified
-    data_by_timestamp = query_data[:]
+def test_query_errors_with_nonprimary_key_simple(dynamo, simple_query_data):
+    data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
     with pytest.raises(ConditionCheckFailed, match=r"No keys in expression. Enable scan or add an index."):
-        Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
+        SimpleKeyModel.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
 
 
-def test_query_with_indexed_hash_key(dynamo, query_data):
-    data_by_timestamp = query_data[:]
+def test_query_with_indexed_hash_key_simple(dynamo, simple_query_data):
+    data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"id == {data_by_timestamp[0]['id']}"))
+    res = SimpleKeyModel.query(Rule(f"id == {data_by_timestamp[0]['id']}"))
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {data_by_timestamp[0]["name"]: data_by_timestamp[0]}
 
 
-def test_query_scan(dynamo, query_data):
-    data_by_timestamp = query_data[:]
+def test_query_scan_simple(dynamo, simple_query_data):
+    data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = Model.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), scan=True)
+    res = SimpleKeyModel.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"), scan=True)
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {d["name"]: d for d in data_by_timestamp[:2]}
 
 
-def test_query_scan_contains(dynamo, query_data):
-    res = Model.query(Rule(f"'{query_data[2]['items'][1]}' in items"), scan=True)
+def test_query_scan_contains_simple(dynamo, simple_query_data):
+    res = SimpleKeyModel.query(Rule(f"'{simple_query_data[2]['items'][1]}' in items"), scan=True)
     res_data = {m.name: m.dict() for m in res}
-    assert res_data == {query_data[2]["name"]: query_data[2]}
+    assert res_data == {simple_query_data[2]["name"]: simple_query_data[2]}
+
+
+def test_save_get_delete_complex(dynamo, complex_table):
+    data = complex_model_data_generator()
+    a = ComplexKeyModel.parse_obj(data)
+    a.save()
+    try:
+        b = ComplexKeyModel.get((data["account"], data["sort_date_key"]))
+        assert b.dict() == a.dict()
+    finally:
+        ComplexKeyModel.delete((data["account"], data["sort_date_key"]))
+
+    key = {
+        "account": data["account"],
+        "sort_date_key": data["sort_date_key"]
+    }
+
+    with pytest.raises(DoesNotExist, match=f'complexmodeltitle123 "{key}" does not exist'):
+        ComplexKeyModel.get((data["account"], data["sort_date_key"]))
+
+
+def test_query_with_hash_key_complex(dynamo, complex_query_data):
+    record = complex_query_data[0]
+    res = ComplexKeyModel.query(Rule(f"account == '{record['account']}' and sort_date_key == '{record['sort_date_key']}'"))
+    res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
+    assert res_data == {(record["account"], record["sort_date_key"]): record}
+
+    # Check that it works regardless of order
+    res = ComplexKeyModel.query(Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'"))
+    res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
+    assert res_data == {(record["account"], record["sort_date_key"]): record}
+
+
+def test_query_errors_with_nonprimary_key_complex(dynamo, complex_query_data):
+    data_by_expires = complex_query_data[:]
+    data_by_expires.sort(key=lambda d: d["expires"])
+    with pytest.raises(ConditionCheckFailed, match=r"No keys in expression. Enable scan or add an index."):
+        ComplexKeyModel.query(Rule(f"notification_id <= '{data_by_expires[2]['notification_id']}'"))
+
+
+def test_query_with_indexed_hash_key_complex(dynamo, complex_query_data):
+    record = complex_query_data[0]
+    res = ComplexKeyModel.query(Rule(f"account == '{record['account']}' and thread_id == '{record['thread_id']}'"))
+    res_data = {(m.account, m.thread_id): m.dict() for m in res}
+    assert res_data == {(record["account"], record["thread_id"]): record}
+
+    res = ComplexKeyModel.query(Rule(f"thread_id == '{record['thread_id']}' and account == '{record['account']}'"))
+    res_data = {(m.account, m.thread_id): m.dict() for m in res}
+    assert res_data == {(record["account"], record["thread_id"]): record}
+
+
+def test_query_scan_complex(dynamo, complex_query_data):
+    data_by_expires = complex_query_data[:]
+    data_by_expires.sort(key=lambda d: d["expires"])
+    res = ComplexKeyModel.query(Rule(f"expires <= '{data_by_expires[2]['expires']}'"), scan=True)
+    res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
+    assert res_data == {(d["account"], d["sort_date_key"]): d for d in data_by_expires[:3]}
