@@ -1,4 +1,5 @@
 from typing import Optional
+from collections.abc import Mapping, Iterable
 import logging
 import json
 from datetime import datetime
@@ -18,9 +19,9 @@ def expression_to_condition(expr, keys: set):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
         if expr.type == "and":
-            return left and right, l_keys | r_keys
+            return left & right, l_keys | r_keys
         if expr.type == "or":
-            return left or right, l_keys | r_keys
+            return left | right, l_keys | r_keys
     if isinstance(expr, ast.ComparisonExpression):
         left, l_keys = expression_to_condition(expr.left, keys)
         right, r_keys = expression_to_condition(expr.right, keys)
@@ -178,6 +179,19 @@ class Backend:
             for field_name, value in data_dict.items()
         }
 
+    def _key_param_to_dict(self, key):
+        _key = {
+            self.hash_key: key,
+        }
+        if self.range_key:
+            if not isinstance(key, tuple) or not len(key) == 2:
+                raise ValueError(f"{self.table_name} needs both a hash_key and a range_key to delete a record.")
+            _key = {
+                self.hash_key: key[0],
+                self.range_key: key[1]
+            }
+        return _key
+
     def initialize(self):
         schema = self.schema
         gsies = {k: v for k, v in self.global_indexes.items()}
@@ -230,31 +244,38 @@ class Backend:
         if not keys_used and not scan:
             raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
         if not scan:
-            index_name = self.index_map.get(tuple(keys_used))
+            key_pair = tuple(keys_used)
+            index_name = self.index_map.get(key_pair) or self.index_map.get(reversed(key_pair))
             params = dict(KeyConditionExpression=expr)
             if index_name:
                 params["IndexName"] = index_name
+            elif not keys_used.issubset({self.hash_key, self.range_key}):
+                raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
             resp = table.query(**params)
         else:
             resp = table.scan(FilterExpression=expr)
         return [self._deserialize_record(rec) for rec in resp["Items"]]
 
-    def get(self, item_key):
-        resp = self.get_table().get_item(Key={self.hash_key: item_key})
+    def get(self, key):
+        _key = self._key_param_to_dict(key)
+        resp = self.get_table().get_item(Key=_key)
 
         if "Item" not in resp:
-            raise DoesNotExist(f'{self.table_name} "{item_key}" does not exist')
+            if not self.range_key:
+                _key = key
+            raise DoesNotExist(f'{self.table_name} "{_key}" does not exist')
+
         return self._deserialize_record(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        hash_key = self.hash_key
         data = self._serialize_record(item.dict())
 
         try:
             if condition:
+                expr, _ = rule_to_boto_expression(condition, self.possible_keys)
                 res = self.get_table().put_item(
                     Item=data,
-                    ConditionExpression=rule_to_boto_expression(condition, hash_key),
+                    ConditionExpression=expr,
                 )
             else:
                 res = self.get_table().put_item(Item=data)
@@ -265,5 +286,5 @@ class Backend:
                 raise ConditionCheckFailed()
             raise e
 
-    def delete(self, item_key: str):
-        self.get_table().delete_item(Key={self.hash_key: item_key})
+    def delete(self, key):
+        self.get_table().delete_item(Key=self._key_param_to_dict(key))

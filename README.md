@@ -58,12 +58,17 @@ For example: querying on a non-hash_key in dynamo will run a scan and be slow.
 
 ### DynamoDB
 
+`hash_key` - the name of the [partition key](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.CoreComponents.html#HowItWorks.CoreComponents.PrimaryKey) field for the backend table.
+
+`range_key` - (optional) the name of the [sort key](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.CoreComponents.html#HowItWorks.CoreComponents.PrimaryKey) field for the backend table for composite key tables.
+
 `region` - (optional) specify the region to access dynamodb in.
 
-`endpoint` - (optional) specify an endpoint to use a local or non-AWS implementation of
-DynamoDB
+`endpoint` - (optional) specify an endpoint to use a local or non-AWS implementation of DynamoDB
 
-`indexes` - (optional) specify a mapping of index-name to tuple(partition_key). Pass `index_name` to `Model.query()` to use an index.
+`local_indexes` - (optional) specify a mapping of index-name to tuple(partition_key).
+
+`global_indexes` - (optional) specify a mapping of index-name to tuple(partition_key).
 
 ### SQLite (Python 3.7+)
 
