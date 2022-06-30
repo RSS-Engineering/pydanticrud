@@ -1,11 +1,11 @@
-from typing import Optional
-from collections.abc import Mapping, Iterable
+from typing import Optional, Set
 import logging
 import json
 from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
+from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
@@ -57,8 +57,8 @@ def expression_to_condition(expr, keys: set):
     raise NotImplementedError
 
 
-def rule_to_boto_expression(rule: Rule, keys: set):
-    return expression_to_condition(rule.statement.expression, keys)
+def rule_to_boto_expression(rule: Rule, keys: Optional[Set[str]] = None):
+    return expression_to_condition(rule.statement.expression, keys or set())
 
 
 # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/customizations/dynamodb.html#valid-dynamodb-types
@@ -192,6 +192,31 @@ class Backend:
             }
         return _key
 
+    def _get_best_index(self, keys_used: Set[str]):
+        def score_index(index):
+            if set(index) == keys_used:
+                # perfect match
+                return 3
+            elif len(index) > len(keys_used):
+                # index match with additional filter
+                return 2
+
+            # We shouldn't get here.
+            raise NotImplementedError()
+
+        possible_indexes = sorted(
+            [
+                key
+                for key in self.index_map.keys()
+                if set(key).issubset(keys_used)
+            ],
+            key=score_index
+        )
+
+        if possible_indexes:
+            return self.index_map[possible_indexes[0]]
+        return None
+
     def initialize(self):
         schema = self.schema
         gsies = {k: v for k, v in self.global_indexes.items()}
@@ -238,22 +263,37 @@ class Backend:
         except ClientError:
             return False
 
-    def query(self, expression, scan=False):
+    def query(self, query_expr: Optional[Rule] = None, filter_expr: Optional[Rule] = None):
         table = self.get_table()
-        expr, keys_used = rule_to_boto_expression(expression, self.possible_keys)
-        if not keys_used and not scan:
-            raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
-        if not scan:
-            key_pair = tuple(keys_used)
-            index_name = self.index_map.get(key_pair) or self.index_map.get(reversed(key_pair))
-            params = dict(KeyConditionExpression=expr)
+        f_expr, _ = rule_to_boto_expression(filter_expr) if filter_expr else (None, set())
+
+        params = {}
+        if f_expr:
+            params["FilterExpression"] = f_expr
+
+        if query_expr:
+            q_expr, keys_used = rule_to_boto_expression(query_expr, self.possible_keys)
+
+            if not keys_used and not filter_expr:
+                raise ConditionCheckFailed("No keys in query expression. Use a filter expression or add an index.")
+
+            index_name = self._get_best_index(keys_used)
+            params["KeyConditionExpression"] = q_expr
+
             if index_name:
                 params["IndexName"] = index_name
             elif not keys_used.issubset({self.hash_key, self.range_key}):
                 raise ConditionCheckFailed("No keys in expression. Enable scan or add an index.")
-            resp = table.query(**params)
+
+            try:
+                resp = table.query(**params)
+            except DynamoDBNeedsKeyConditionError:
+                raise ConditionCheckFailed("Non-key attributes are not valid in the query expression. Use filter "
+                                           "expression")
+
         else:
-            resp = table.scan(FilterExpression=expr)
+            resp = table.scan(**params)
+
         return [self._deserialize_record(rec) for rec in resp["Items"]]
 
     def get(self, key):
