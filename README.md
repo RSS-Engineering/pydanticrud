@@ -46,11 +46,19 @@ defined by [rule-engine](https://zerosteiner.github.io/rule-engine/) for
 querying or filtering the backend.
 
 NOTE: Rule complexity is limited by the querying capabilities of the backend.
-For example: querying on a non-hash_key in dynamo will run a scan and be slow.
 
 ### Instance Methods
 
 `save()` - store the Model instance to the backend
+
+### DynamoDB
+
+`query(query_expr: Optional[Rule], filter_expr: Optional[Rule])` - Providing a
+  `query_expr` parameter will try to apply the keys of the expression to an
+  existing index. Providing a `filter_expr` parameter will filter the results of
+  a passed `query_expr` or run a dynamodb `scan` if no `query_expr` is passed.
+  An empty call to `query()` will return the scan results (and be resource
+  intensive).
 
 ## Backend Configuration Members
 
