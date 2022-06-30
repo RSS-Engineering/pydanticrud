@@ -26,8 +26,8 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
         return cls.__backend__.exists()
 
     @classmethod
-    def query(cls, condition: Rule, **kwargs):
-        res = cls.__backend__.query(condition, **kwargs)
+    def query(cls, *args, **kwargs):
+        res = cls.__backend__.query(*args, **kwargs)
         return [cls.parse_obj(i) for i in res]
 
     @classmethod
