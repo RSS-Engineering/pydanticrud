@@ -136,7 +136,8 @@ class Backend:
             self.index_map[keys] = name
             for key in keys:
                 self.possible_keys.add(key)
-        self.dynamodb =boto3.resource(
+
+        self.dynamodb = boto3.resource(
             "dynamodb",
             region_name=getattr(cfg, "region", "us-east-2"),
             endpoint_url=getattr(cfg, "endpoint", None),
