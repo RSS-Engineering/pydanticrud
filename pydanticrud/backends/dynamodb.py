@@ -136,17 +136,14 @@ class Backend:
             self.index_map[keys] = name
             for key in keys:
                 self.possible_keys.add(key)
-        self.dynamodb =boto3.resource(
+
+        self.dynamodb = boto3.resource(
             "dynamodb",
             region_name=getattr(cfg, "region", "us-east-2"),
             endpoint_url=getattr(cfg, "endpoint", None),
         )
 
     def _serialize_field(self, field_name, value):
-        definition = self.schema["definitions"]
-        schema = self.schema["properties"]
-        for k, v in definition.items():
-            schema[k.lower()] = v
         schema = self.schema["properties"]
         field_type = schema[field_name].get("type", "anyOf")
         try:
@@ -164,16 +161,11 @@ class Backend:
             for field_name, value in data_dict.items()
         }
 
-    #TODO The nested models need fix if the model columns are optional it may fail to validate.
     def _deserialize_field(self, field_name, value):
-        definition = self.schema["definitions"]
         schema = self.schema["properties"]
-        for k,v in definition.items():
-            schema[k.lower()] = v
         field_type = schema[field_name].get("type", "anyOf")
         try:
-            if field_name in self.schema['required'] and value is not None:
-                return DESERIALIZE_MAP[field_type](value)
+            return DESERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No deserializer for field_type {field_type}")
             return value  # do nothing but log it.
