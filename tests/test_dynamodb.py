@@ -346,4 +346,3 @@ def test_query_with_nested_model_optional(dynamo, nested_query_data_optional):
     res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
     res_data = [m.ticket for m in res]
     assert any(elem is None for elem in res_data)
-    NestedModel.delete()
