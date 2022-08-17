@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 from decimal import Decimal
 from datetime import datetime
 from uuid import uuid4
@@ -59,6 +59,25 @@ class ComplexKeyModel(BaseModel):
         }
 
 
+class Ticket(BaseModel):
+    created_time: str
+    number: str
+
+
+class NestedModel(BaseModel):
+    account: str
+    sort_date_key: str
+    expires: str
+    ticket: Optional[Ticket]
+
+    class Config:
+        title = "NestedModelTitle123"
+        hash_key = "account"
+        range_key = "sort_date_key"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
+
+
 def simple_model_data_generator(**kwargs):
     data = dict(
         id=random.randint(0, 100000),
@@ -83,6 +102,21 @@ def complex_model_data_generator(**kwargs):
         category_id=random.randint(1, 15),
         notification_id=str(uuid4()),
         thread_id=str(uuid4())
+    )
+    data.update(kwargs)
+    return data
+
+
+def nested_model_data_generator(include_ticket=True, **kwargs):
+    data = dict(
+        account=str(uuid4()),
+        sort_date_key=random_datetime().isoformat(),
+        expires=future_datetime(days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)).isoformat(),
+        ticket={
+            'created_time': random_datetime().isoformat(),
+            'number': random.randint(0, 1000)
+
+        } if include_ticket else None
     )
     data.update(kwargs)
     return data
@@ -121,6 +155,14 @@ def complex_table(dynamo):
 
 
 @pytest.fixture(scope="module")
+def nested_table(dynamo):
+    if not NestedModel.exists():
+        NestedModel.initialize()
+        assert NestedModel.exists()
+    return NestedModel
+
+
+@pytest.fixture(scope="module")
 def simple_query_data(simple_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
@@ -145,6 +187,32 @@ def complex_query_data(complex_table):
     finally:
         for datum in data:
             ComplexKeyModel.delete((datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key]))
+
+
+@pytest.fixture(scope="module")
+def nested_query_data(nested_table):
+    presets = [dict()] * 5
+    data = [datum for datum in [nested_model_data_generator(**i) for i in presets]]
+    for datum in data:
+        NestedModel.parse_obj(datum).save()
+    try:
+        yield data
+    finally:
+        for datum in data:
+            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
+
+
+@pytest.fixture(scope="module")
+def nested_query_data_optional(nested_table):
+    presets = [dict()] * 5
+    data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
+    for datum in data:
+        NestedModel.parse_obj(datum).save()
+    try:
+        yield data
+    finally:
+        for datum in data:
+            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
 
 
 def test_save_get_delete_simple(dynamo, simple_table):
@@ -228,12 +296,14 @@ def test_save_get_delete_complex(dynamo, complex_table):
 
 def test_query_with_hash_key_complex(dynamo, complex_query_data):
     record = complex_query_data[0]
-    res = ComplexKeyModel.query(Rule(f"account == '{record['account']}' and sort_date_key == '{record['sort_date_key']}'"))
+    res = ComplexKeyModel.query(
+        Rule(f"account == '{record['account']}' and sort_date_key == '{record['sort_date_key']}'"))
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
     # Check that it works regardless of order
-    res = ComplexKeyModel.query(Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'"))
+    res = ComplexKeyModel.query(
+        Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'"))
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
@@ -262,3 +332,18 @@ def test_query_scan_complex(dynamo, complex_query_data):
     res = ComplexKeyModel.query(filter_expr=Rule(f"expires <= '{data_by_expires[2]['expires']}'"))
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(d["account"], d["sort_date_key"]): d for d in data_by_expires[:3]}
+
+
+def test_query_with_nested_model(dynamo, nested_query_data):
+    data_by_expires = nested_model_data_generator()
+    res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
+    res_data = [m.ticket for m in res]
+    assert any(elem is not None for elem in res_data)
+
+
+def test_query_with_nested_model_optional(dynamo, nested_query_data_optional):
+    data_by_expires = nested_model_data_generator(include_ticket=False)
+    res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
+    res_data = [m.ticket for m in res]
+    assert any(elem is None for elem in res_data)
+    NestedModel.delete()

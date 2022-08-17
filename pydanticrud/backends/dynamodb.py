@@ -144,10 +144,11 @@ class Backend:
         )
 
     def _serialize_field(self, field_name, value):
-        definition = self.schema["definitions"]
+        definition = self.schema.get("definitions", None)
         schema = self.schema["properties"]
-        for k, v in definition.items():
-            schema[k.lower()] = v
+        if definition:
+            for k, v in definition.items():
+                schema[k.lower()] = v
         schema = self.schema["properties"]
         field_type = schema[field_name].get("type", "anyOf")
         try:
