@@ -5,6 +5,7 @@ from uuid import uuid4
 import random
 
 import docker
+from pydantic import BaseModel as PydanticBaseModel
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist
@@ -59,7 +60,7 @@ class ComplexKeyModel(BaseModel):
         }
 
 
-class Ticket(BaseModel):
+class Ticket(PydanticBaseModel):
     created_time: str
     number: str
 
@@ -194,7 +195,8 @@ def nested_query_data(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(**i) for i in presets]]
     for datum in data:
-        NestedModel.parse_obj(datum).save()
+        nested_datum = NestedModel.parse_obj(datum)
+        nested_datum.save()
     try:
         yield data
     finally:

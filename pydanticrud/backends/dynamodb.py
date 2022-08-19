@@ -152,7 +152,7 @@ class Backend:
         schema = self.schema["properties"]
         field_type = schema[field_name].get("type", "anyOf")
         try:
-            if field_name in self.schema['required'] and value is not None:
+            if any([field_name in self.schema['required'], value is not None]):
                 return SERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No serializer for field_type {field_type}")
@@ -174,7 +174,7 @@ class Backend:
             schema[k.lower()] = v
         field_type = schema[field_name].get("type", "anyOf")
         try:
-            if field_name in self.schema['required'] and value is not None:
+            if any([field_name in self.schema['required'], value is not None]):
                 return DESERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No deserializer for field_type {field_type}")
