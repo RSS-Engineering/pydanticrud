@@ -144,10 +144,16 @@ class Backend:
         )
 
     def _serialize_field(self, field_name, value):
+        definition = self.schema.get("definitions", None)
+        schema = self.schema["properties"]
+        if definition:
+            for k, v in definition.items():
+                schema[k.lower()] = v
         schema = self.schema["properties"]
         field_type = schema[field_name].get("type", "anyOf")
         try:
-            return SERIALIZE_MAP[field_type](value)
+            if any([field_name in self.schema['required'], value is not None]):
+                return SERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No serializer for field_type {field_type}")
             return value  # do nothing but log it.
@@ -162,10 +168,14 @@ class Backend:
         }
 
     def _deserialize_field(self, field_name, value):
+        definition = self.schema["definitions"]
         schema = self.schema["properties"]
+        for k,v in definition.items():
+            schema[k.lower()] = v
         field_type = schema[field_name].get("type", "anyOf")
         try:
-            return DESERIALIZE_MAP[field_type](value)
+            if any([field_name in self.schema['required'], value is not None]):
+                return DESERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No deserializer for field_type {field_type}")
             return value  # do nothing but log it.
