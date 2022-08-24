@@ -144,7 +144,7 @@ class Backend:
         )
 
     def _serialize_field(self, field_name, value):
-        definition = self.schema.get("definitions", None)
+        definition = self.schema.get("definitions")
         schema = self.schema["properties"]
         if definition:
             for k, v in definition.items():
@@ -168,10 +168,11 @@ class Backend:
         }
 
     def _deserialize_field(self, field_name, value):
-        definition = self.schema["definitions"]
+        definition = self.schema.get("definitions")
         schema = self.schema["properties"]
-        for k,v in definition.items():
-            schema[k.lower()] = v
+        if definition:
+            for k, v in definition.items():
+                schema[k.lower()] = v
         field_type = schema[field_name].get("type", "anyOf")
         try:
             if any([field_name in self.schema['required'], value is not None]):
