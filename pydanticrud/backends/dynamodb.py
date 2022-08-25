@@ -303,9 +303,15 @@ class Backend:
                                            "expression")
 
         else:
-            resp = table.scan(**params)
+            try:
+                resp = table.scan(**params)
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    resp = None
+                else:
+                    raise e
 
-        return [self._deserialize_record(rec) for rec in resp["Items"]]
+        return [self._deserialize_record(rec) for rec in resp["Items"]] if resp else []
 
     def get(self, key):
         _key = self._key_param_to_dict(key)
