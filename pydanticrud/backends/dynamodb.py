@@ -301,17 +301,20 @@ class Backend:
             except DynamoDBNeedsKeyConditionError:
                 raise ConditionCheckFailed("Non-key attributes are not valid in the query expression. Use filter "
                                            "expression")
+            except ClientError as e:
+                if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                    return []
+                raise e
 
         else:
             try:
                 resp = table.scan(**params)
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ResourceNotFoundException":
-                    resp = None
-                else:
-                    raise e
+                    return []
+                raise e
 
-        return [self._deserialize_record(rec) for rec in resp["Items"]] if resp else []
+        return [self._deserialize_record(rec) for rec in resp["Items"]]
 
     def get(self, key):
         _key = self._key_param_to_dict(key)
