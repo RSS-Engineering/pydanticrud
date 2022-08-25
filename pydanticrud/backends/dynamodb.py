@@ -298,13 +298,13 @@ class Backend:
 
             try:
                 resp = table.query(**params)
-            except DynamoDBNeedsKeyConditionError:
-                raise ConditionCheckFailed("Non-key attributes are not valid in the query expression. Use filter "
-                                           "expression")
             except ClientError as e:
                 if e.response["Error"]["Code"] == "ResourceNotFoundException":
                     return []
                 raise e
+            except DynamoDBNeedsKeyConditionError:
+                raise ConditionCheckFailed("Non-key attributes are not valid in the query expression. Use filter "
+                                           "expression")
 
         else:
             try:
