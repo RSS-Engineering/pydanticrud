@@ -7,13 +7,13 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = ">=3.6"
+boto3 = "^1.17.112"
 rule-engine = "^3.2.0"
 pydantic = "^1.8.2"
 boto3 = {version = "^1.17.112", optional = true}
 dataclasses = {version = "^0.8", python = "3.6"}
 
 [tool.poetry.dev-dependencies]
-boto3 = "^1.17.112"
 pytest = "^6.2.4"
 docker = "^5.0.0"
 black = "^21.6b0"
