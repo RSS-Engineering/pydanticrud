@@ -318,7 +318,12 @@ class Backend:
 
     def get(self, key):
         _key = self._key_param_to_dict(key)
-        resp = self.get_table().get_item(Key=_key)
+        try:
+            resp = self.get_table().get_item(Key=_key)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ResourceNotFoundException":
+                raise DoesNotExist(f'{self.table_name} "{_key}" does not exist')
+            raise e
 
         if "Item" not in resp:
             if not self.range_key:
