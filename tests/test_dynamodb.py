@@ -5,7 +5,7 @@ from uuid import uuid4
 import random
 
 import docker
-from pydantic import BaseModel as PydanticBaseModel
+from pydantic import BaseModel as PydanticBaseModel, Field
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist
@@ -37,6 +37,19 @@ class SimpleKeyModel(BaseModel):
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
         global_indexes = {"by-id": ("id",)}
+
+
+class AliasKeyModel(BaseModel):
+    id: int
+    value: int
+    name: str
+    type_: str = Field(alias="type")
+
+    class Config:
+        title = "AliasTitle123"
+        hash_key = "name"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
 
 
 class ComplexKeyModel(BaseModel):
@@ -77,6 +90,17 @@ class NestedModel(BaseModel):
         range_key = "sort_date_key"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
+
+
+def alias_model_data_generator(**kwargs):
+    data = dict(
+        id=random.randint(0, 100000),
+        value=random.randint(0, 100000),
+        name=random_unique_name(),
+        type="aliasType"
+    )
+    data.update(kwargs)
+    return data
 
 
 def simple_model_data_generator(**kwargs):
@@ -164,6 +188,14 @@ def nested_table(dynamo):
 
 
 @pytest.fixture(scope="module")
+def alias_table(dynamo):
+    if not AliasKeyModel.exists():
+        AliasKeyModel.initialize()
+        assert AliasKeyModel.exists()
+    return AliasKeyModel
+
+
+@pytest.fixture(scope="module")
 def simple_query_data(simple_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
@@ -189,6 +221,18 @@ def complex_query_data(complex_table):
         for datum in data:
             ComplexKeyModel.delete((datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key]))
 
+
+@pytest.fixture(scope="module")
+def alias_query_data(alias_table):
+    presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
+    data = [datum for datum in [alias_model_data_generator(**i) for i in presets]]
+    for datum in data:
+        AliasKeyModel.parse_obj(datum).save()
+    try:
+        yield data
+    finally:
+        for datum in data:
+            AliasKeyModel.delete(datum["name"])
 
 @pytest.fixture(scope="module")
 def nested_query_data(nested_table):
@@ -348,3 +392,21 @@ def test_query_with_nested_model_optional(dynamo, nested_query_data_optional):
     res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
     res_data = [m.ticket for m in res]
     assert any(elem is None for elem in res_data)
+
+
+def test_query_alias_save(dynamo):
+    presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
+    data = [datum for datum in [alias_model_data_generator(**i) for i in presets]]
+    AliasKeyModel.initialize()
+    try:
+        for datum in data:
+            AliasKeyModel.parse_obj(datum).save()
+    except Exception as e:
+        raise pytest.fail("Failed to save Alias model!")
+
+def test_get_alias_model_data(dynamo, alias_query_data):
+    data = alias_model_data_generator()
+    res = AliasKeyModel.get(alias_query_data[0]['name'])
+    assert res.dict(by_alias=True) == alias_query_data[0]
+
+
