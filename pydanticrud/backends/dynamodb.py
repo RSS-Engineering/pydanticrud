@@ -333,7 +333,7 @@ class Backend:
         return self._deserialize_record(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        data = self._serialize_record(item.dict())
+        data = self._serialize_record(item.dict(by_alias=True))
 
         try:
             if condition:
