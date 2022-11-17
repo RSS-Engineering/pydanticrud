@@ -7,8 +7,10 @@ class CrudMetaClass(ModelMetaclass):
     def __new__(mcs, name, bases, namespace, **kwargs):
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
         if hasattr(cls.__config__, "backend"):
+            if hasattr(cls.__config__, "opensearch"):
+                cls.__backend__ = cls.__config__.opensearch(cls, db_backend=cls.__config__.backend)
+                return cls
             cls.__backend__ = cls.__config__.backend(cls)
-
         return cls
 
 

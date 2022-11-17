@@ -6,11 +6,12 @@ authors = ["Timothy Farrell <tim.farrell@rackspace.com>"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = ">=3.6"
+python = ">=3.6,<4"
 boto3 = "^1.17.112"
 rule-engine = "^3.2.0"
 pydantic = "^1.8.2"
 dataclasses = {version = "^0.8", python = "3.6"}
+opensearch-py = "^2.0.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.2.4"
