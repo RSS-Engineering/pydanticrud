@@ -12,6 +12,26 @@ class CrudMetaClass(ModelMetaclass):
         return cls
 
 
+class IterableResult:
+    def __init__(self, cls, records, count=None):
+        self.records = [cls.parse_obj(i) for i in records]
+        self.count = count  # None indicates "unknown"
+
+        self._current_index = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            member = self.records[self._current_index]
+            self._current_index += 1
+            return member
+        except IndexError:
+            self._current_index = 0
+            raise StopIteration
+
+
 class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
     @classmethod
     def initialize(cls):
@@ -28,7 +48,9 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
     @classmethod
     def query(cls, *args, **kwargs):
         res = cls.__backend__.query(*args, **kwargs)
-        return [cls.parse_obj(i) for i in res]
+        if not isinstance(res, IterableResult):
+            res = IterableResult(cls, res)
+        return res
 
     @classmethod
     def get(cls, *args, **kwargs):

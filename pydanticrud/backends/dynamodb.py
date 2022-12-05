@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import Optional, Set, Any, Dict
 import logging
 import json
 from datetime import datetime
@@ -9,6 +9,7 @@ from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
+from ..main import IterableResult
 from ..exceptions import DoesNotExist, ConditionCheckFailed
 
 log = logging.getLogger(__name__)
@@ -116,9 +117,17 @@ def index_definition(index_name, keys, gsi=False):
     return schema
 
 
+class DynamoIterableResult(IterableResult):
+    def __init__(self, cls, result, serialized_items):
+        super(DynamoIterableResult, self).__init__(cls, serialized_items, result.get("Count"))
+        self.last_evaluated_key = result.get("LastEvaluatedKey")
+        self.scanned_count = result["ScannedCount"]
+
+
 class Backend:
     def __init__(self, cls):
         cfg = cls.Config
+        self.cls = cls
         self.schema = cls.schema()
         self.hash_key = cfg.hash_key
         self.range_key = getattr(cfg, 'range_key', None)
@@ -274,11 +283,22 @@ class Backend:
         except ClientError:
             return False
 
-    def query(self, query_expr: Optional[Rule] = None, filter_expr: Optional[Rule] = None):
+    def query(self,
+              query_expr: Optional[Rule] = None,
+              filter_expr: Optional[Rule] = None,
+              limit: Optional[int] = None,
+              exclusive_start_key: Optional[Dict[str, Any]] = None,
+              order: str = 'asc'
+              ):
         table = self.get_table()
         f_expr, _ = rule_to_boto_expression(filter_expr) if filter_expr else (None, set())
 
         params = {}
+
+        if limit:
+            params["Limit"] = limit
+        if exclusive_start_key:
+            params["ExclusiveStartKey"] = exclusive_start_key
         if f_expr:
             params["FilterExpression"] = f_expr
 
@@ -290,6 +310,9 @@ class Backend:
 
             index_name = self._get_best_index(keys_used)
             params["KeyConditionExpression"] = q_expr
+
+            if order != 'asc':
+                params["ScanIndexForward"] = False
 
             if index_name:
                 params["IndexName"] = index_name
@@ -305,8 +328,10 @@ class Backend:
             except DynamoDBNeedsKeyConditionError:
                 raise ConditionCheckFailed("Non-key attributes are not valid in the query expression. Use filter "
                                            "expression")
-
         else:
+            if order != 'asc':
+                raise ConditionCheckFailed("Scans do not support reverse order.")
+
             try:
                 resp = table.scan(**params)
             except ClientError as e:
@@ -314,7 +339,7 @@ class Backend:
                     return []
                 raise e
 
-        return [self._deserialize_record(rec) for rec in resp["Items"]]
+        return DynamoIterableResult(self.cls, resp, (self._deserialize_record(rec) for rec in resp["Items"]))
 
     def get(self, key):
         _key = self._key_param_to_dict(key)
