@@ -295,7 +295,7 @@ class Backend:
               query_expr: Optional[Rule] = None,
               filter_expr: Optional[Rule] = None,
               limit: Optional[int] = None,
-              exclusive_start_key: Optional[Dict[str, Any]] = None,
+              exclusive_start_key: Optional[tuple[Any]] = None,
               order: str = 'asc',
               ):
         table = self.get_table()
