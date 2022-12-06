@@ -256,7 +256,7 @@ def nested_query_data(nested_table):
 
 
 @pytest.fixture(scope="module")
-def nested_query_data_optional(nested_table):
+def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
     for datum in data:
@@ -413,15 +413,13 @@ def test_query_scan_complex(dynamo, complex_query_data):
 
 
 def test_query_with_nested_model(dynamo, nested_query_data):
-    data_by_expires = nested_model_data_generator()
-    res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
+    res = NestedModel.query()
     res_data = [m.ticket for m in res]
     assert any(elem is not None for elem in res_data)
 
 
-def test_query_with_nested_model_optional(dynamo, nested_query_data_optional):
-    data_by_expires = nested_model_data_generator(include_ticket=False)
-    res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
+def test_query_with_nested_model_optional(dynamo, nested_query_data_empty_ticket):
+    res = NestedModel.query()
     res_data = [m.ticket for m in res]
     assert any(elem is None for elem in res_data)
 
