@@ -211,9 +211,9 @@ def simple_query_data(simple_table):
 
 @pytest.fixture(scope="module")
 def complex_query_data(complex_table):
-    record_count = 20
+    record_count = 500
     presets = [dict()] * record_count
-    accounts = [str(uuid4()) for i in range(record_count//4)]
+    accounts = [str(uuid4()) for i in range(4)]
 
     data = [
         complex_model_data_generator(account=accounts[i % 4], **p)
@@ -383,6 +383,31 @@ def test_ordered_query_with_hash_key_complex(dynamo, complex_query_data, order):
         if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
     ], reverse=order == 'desc')
 
+    assert res_data == check_data
+
+
+@pytest.mark.parametrize('order', ('asc', 'desc'))
+def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, order):
+    page_size = 2
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'")
+    res = ComplexKeyModel.query(query_rule, order=order, limit=page_size)
+    res_data = [(m.account, m.sort_date_key) for m in res]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')[:page_size]
+    assert res_data == check_data
+    assert res.last_evaluated_key == check_data[-1]
+
+    res = ComplexKeyModel.query(query_rule, order=order, limit=page_size, exclusive_start_key=res.last_evaluated_key)
+    res_data = [(m.account, m.sort_date_key) for m in res]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')[page_size:page_size*2]
     assert res_data == check_data
 
 

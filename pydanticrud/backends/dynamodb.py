@@ -120,7 +120,15 @@ def index_definition(index_name, keys, gsi=False):
 class DynamoIterableResult(IterableResult):
     def __init__(self, cls, result, serialized_items):
         super(DynamoIterableResult, self).__init__(cls, serialized_items, result.get("Count"))
-        self.last_evaluated_key = result.get("LastEvaluatedKey")
+
+        self.last_evaluated_key = None
+        lsk = result.get("LastEvaluatedKey")
+        if lsk:
+            _key = [lsk[cls.Config.hash_key]]
+            if cls.Config.range_key:
+                _key.append(lsk[cls.Config.range_key])
+            self.last_evaluated_key = tuple(_key)
+
         self.scanned_count = result["ScannedCount"]
 
 
@@ -288,7 +296,7 @@ class Backend:
               filter_expr: Optional[Rule] = None,
               limit: Optional[int] = None,
               exclusive_start_key: Optional[Dict[str, Any]] = None,
-              order: str = 'asc'
+              order: str = 'asc',
               ):
         table = self.get_table()
         f_expr, _ = rule_to_boto_expression(filter_expr) if filter_expr else (None, set())
@@ -298,7 +306,7 @@ class Backend:
         if limit:
             params["Limit"] = limit
         if exclusive_start_key:
-            params["ExclusiveStartKey"] = exclusive_start_key
+            params["ExclusiveStartKey"] = self._key_param_to_dict(exclusive_start_key)
         if f_expr:
             params["FilterExpression"] = f_expr
 
