@@ -53,12 +53,15 @@ NOTE: Rule complexity is limited by the querying capabilities of the backend.
 
 ### DynamoDB
 
-`query(query_expr: Optional[Rule], filter_expr: Optional[Rule])` - Providing a
-  `query_expr` parameter will try to apply the keys of the expression to an
-  existing index. Providing a `filter_expr` parameter will filter the results of
+`query(query_expr: Optional[Rule], filter_expr: Optional[Rule], limit: Optional[str], exclusive_start_key: Optional[tuple[Any]], order: str = 'asc'`
+  - Providing a `query_expr` parameter will try to apply the keys of the expression to an
+  existing index.
+  - Providing a `filter_expr` parameter will filter the results of
   a passed `query_expr` or run a dynamodb `scan` if no `query_expr` is passed.
-  An empty call to `query()` will return the scan results (and be resource
+  - An empty call to `query()` will return the scan results (and be resource
   intensive).
+  - Providing a `limit` parameter will limit the number of results. If more results remain, the returned dataset will have an `last_evaluated_key` property that can be passed to `exclusive_start_key` to continue with the next page.
+  - Providing `order='desc'` will return the result set in descending order. This is not available for query calls that "scan" dynamodb.
 
 ## Backend Configuration Members
 

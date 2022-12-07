@@ -211,8 +211,14 @@ def simple_query_data(simple_table):
 
 @pytest.fixture(scope="module")
 def complex_query_data(complex_table):
-    presets = [dict()] * 20
-    data = [datum for datum in [complex_model_data_generator(**i) for i in presets]]
+    record_count = 500
+    presets = [dict()] * record_count
+    accounts = [str(uuid4()) for i in range(4)]
+
+    data = [
+        complex_model_data_generator(account=accounts[i % 4], **p)
+        for i, p in enumerate(presets)
+    ]
     for datum in data:
         ComplexKeyModel.parse_obj(datum).save()
     try:
@@ -234,6 +240,7 @@ def alias_query_data(alias_table):
         for datum in data:
             AliasKeyModel.delete(datum["name"])
 
+
 @pytest.fixture(scope="module")
 def nested_query_data(nested_table):
     presets = [dict()] * 5
@@ -249,7 +256,7 @@ def nested_query_data(nested_table):
 
 
 @pytest.fixture(scope="module")
-def nested_query_data_optional(nested_table):
+def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
     for datum in data:
@@ -280,6 +287,14 @@ def test_query_with_hash_key_simple(dynamo, simple_query_data):
     res_data = {m.name: m.dict() for m in res}
     simple_query_data[0]["data"] = None  # This is a default value and should be populated as such
     assert res_data == {simple_query_data[0]["name"]: simple_query_data[0]}
+
+
+def test_scan_errors_with_order(dynamo, simple_query_data):
+    data_by_timestamp = simple_query_data[:]
+    data_by_timestamp.sort(key=lambda d: d["timestamp"])
+    with pytest.raises(ConditionCheckFailed,
+                       match=r"Scans do not support reverse order."):
+        SimpleKeyModel.query(order='desc')
 
 
 def test_query_errors_with_nonprimary_key_simple(dynamo, simple_query_data):
@@ -347,11 +362,53 @@ def test_query_with_hash_key_complex(dynamo, complex_query_data):
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
-    # Check that it works regardless of order
+    # Check that it works regardless of query attribute order
     res = ComplexKeyModel.query(
         Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'"))
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
+
+
+@pytest.mark.parametrize('order', ('asc', 'desc'))
+def test_ordered_query_with_hash_key_complex(dynamo, complex_query_data, order):
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    res = ComplexKeyModel.query(
+        Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'"),
+        order=order
+    )
+    res_data = [(m.account, m.sort_date_key) for m in res]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')
+
+    assert res_data == check_data
+
+
+@pytest.mark.parametrize('order', ('asc', 'desc'))
+def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, order):
+    page_size = 2
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'")
+    res = ComplexKeyModel.query(query_rule, order=order, limit=page_size)
+    res_data = [(m.account, m.sort_date_key) for m in res]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')[:page_size]
+    assert res_data == check_data
+    assert res.last_evaluated_key == check_data[-1]
+
+    res = ComplexKeyModel.query(query_rule, order=order, limit=page_size, exclusive_start_key=res.last_evaluated_key)
+    res_data = [(m.account, m.sort_date_key) for m in res]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')[page_size:page_size*2]
+    assert res_data == check_data
 
 
 def test_query_errors_with_nonprimary_key_complex(dynamo, complex_query_data):
@@ -381,15 +438,13 @@ def test_query_scan_complex(dynamo, complex_query_data):
 
 
 def test_query_with_nested_model(dynamo, nested_query_data):
-    data_by_expires = nested_model_data_generator()
-    res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
+    res = NestedModel.query()
     res_data = [m.ticket for m in res]
     assert any(elem is not None for elem in res_data)
 
 
-def test_query_with_nested_model_optional(dynamo, nested_query_data_optional):
-    data_by_expires = nested_model_data_generator(include_ticket=False)
-    res = NestedModel.query(filter_expr=Rule(f"expires <= '{data_by_expires['expires']}'"))
+def test_query_with_nested_model_optional(dynamo, nested_query_data_empty_ticket):
+    res = NestedModel.query()
     res_data = [m.ticket for m in res]
     assert any(elem is None for elem in res_data)
 
@@ -403,6 +458,7 @@ def test_query_alias_save(dynamo):
             AliasKeyModel.parse_obj(datum).save()
     except Exception as e:
         raise pytest.fail("Failed to save Alias model!")
+
 
 def test_get_alias_model_data(dynamo, alias_query_data):
     data = alias_model_data_generator()
