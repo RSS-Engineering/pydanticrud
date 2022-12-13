@@ -1,6 +1,8 @@
 from typing import Dict, List, Optional
+from base64 import b64decode, b64encode
 from decimal import Decimal
 from datetime import datetime
+import json
 from uuid import uuid4
 import random
 
@@ -399,7 +401,7 @@ def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, orde
         if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
     ], reverse=order == 'desc')[:page_size]
     assert res_data == check_data
-    assert res.last_evaluated_key == check_data[-1]
+    assert res.last_evaluated_key == {"account": check_data[-1][0], "sort_date_key": check_data[-1][1]}
 
     res = ComplexKeyModel.query(query_rule, order=order, limit=page_size, exclusive_start_key=res.last_evaluated_key)
     res_data = [(m.account, m.sort_date_key) for m in res]
@@ -409,6 +411,25 @@ def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, orde
         if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
     ], reverse=order == 'desc')[page_size:page_size*2]
     assert res_data == check_data
+
+
+def test_pagination_query_with_index_complex(dynamo, complex_query_data):
+    page_size = 2
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and category_id >= {middle_record['category_id']}")
+    check_data = ComplexKeyModel.query(query_rule)
+    res = ComplexKeyModel.query(query_rule, limit=page_size)
+    res_data = [{"account": m.account, "category_id": m.category_id, "sort_date_key": m.sort_date_key} for m in res]
+    # We only check for inclusion because the category index order is not going to be the same and since there are
+    # multiple records per category, it's unknowable outside of the query response.
+    assert all([r in check_data for r in res])
+    assert len(res) == page_size
+    assert res.last_evaluated_key == {"account": res_data[-1]["account"], "category_id": res_data[-1]["category_id"],
+                                      "sort_date_key": res_data[-1]["sort_date_key"]}
+
+    res = ComplexKeyModel.query(query_rule, limit=page_size, exclusive_start_key=res.last_evaluated_key)
+    assert all([r in check_data for r in res])
+    assert len(res) == page_size
 
 
 def test_query_errors_with_nonprimary_key_complex(dynamo, complex_query_data):
