@@ -19,6 +19,9 @@ class IterableResult:
 
         self._current_index = 0
 
+    def __len__(self):
+        return self.count
+
     def __iter__(self):
         return self
 

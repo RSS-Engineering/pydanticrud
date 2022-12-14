@@ -1,7 +1,8 @@
-from typing import Optional, Set, Any, Dict
+from typing import Optional, Set
 import logging
 import json
 from datetime import datetime
+from base64 import b64encode, b64decode
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -117,48 +118,9 @@ def index_definition(index_name, keys, gsi=False):
     return schema
 
 
-class DynamoIterableResult(IterableResult):
-    def __init__(self, cls, result, serialized_items):
-        super(DynamoIterableResult, self).__init__(cls, serialized_items, result.get("Count"))
-
-        self.last_evaluated_key = None
-        lsk = result.get("LastEvaluatedKey")
-        if lsk:
-            _key = [lsk[cls.Config.hash_key]]
-            if cls.Config.range_key:
-                _key.append(lsk[cls.Config.range_key])
-            self.last_evaluated_key = tuple(_key)
-
-        self.scanned_count = result["ScannedCount"]
-
-
-class Backend:
-    def __init__(self, cls):
-        cfg = cls.Config
-        self.cls = cls
-        self.schema = cls.schema()
-        self.hash_key = cfg.hash_key
-        self.range_key = getattr(cfg, 'range_key', None)
-        self.table_name = cls.get_table_name()
-
-        self.local_indexes = getattr(cfg, "local_indexes", {})
-        self.global_indexes = getattr(cfg, "global_indexes", {})
-        self.index_map = {(self.hash_key,): None}
-        self.possible_keys = {self.hash_key}
-        if self.range_key:
-            self.possible_keys.add(self.range_key)
-            self.index_map = {(self.hash_key, self.range_key): None}
-
-        for name, keys in dict(**self.local_indexes, **self.global_indexes).items():
-            self.index_map[keys] = name
-            for key in keys:
-                self.possible_keys.add(key)
-
-        self.dynamodb = boto3.resource(
-            "dynamodb",
-            region_name=getattr(cfg, "region", "us-east-2"),
-            endpoint_url=getattr(cfg, "endpoint", None),
-        )
+class DynamoSerializer:
+    def __init__(self, schema):
+        self.schema = schema
 
     def _serialize_field(self, field_name, value):
         definition = self.schema.get("definitions")
@@ -175,7 +137,7 @@ class Backend:
             log.debug(f"No serializer for field_type {field_type}")
             return value  # do nothing but log it.
 
-    def _serialize_record(self, data_dict) -> dict:
+    def serialize_record(self, data_dict) -> dict:
         """
         Apply converters to non-native types
         """
@@ -198,7 +160,7 @@ class Backend:
             log.debug(f"No deserializer for field_type {field_type}")
             return value  # do nothing but log it.
 
-    def _deserialize_record(self, data_dict) -> dict:
+    def deserialize_record(self, data_dict) -> dict:
         """
         Apply converters to non-native types
         """
@@ -206,6 +168,44 @@ class Backend:
             field_name: self._deserialize_field(field_name, value)
             for field_name, value in data_dict.items()
         }
+
+
+class DynamoIterableResult(IterableResult):
+    def __init__(self, cls, result, serialized_items):
+        super(DynamoIterableResult, self).__init__(cls, serialized_items, result.get("Count"))
+
+        self.last_evaluated_key = result.get("LastEvaluatedKey")
+        self.scanned_count = result["ScannedCount"]
+
+
+class Backend:
+    def __init__(self, cls):
+        cfg = cls.Config
+        self.cls = cls
+        self.schema = cls.schema()
+        self.serializer = DynamoSerializer(self.schema)
+        self.hash_key = cfg.hash_key
+        self.range_key = getattr(cfg, 'range_key', None)
+        self.table_name = cls.get_table_name()
+
+        self.local_indexes = getattr(cfg, "local_indexes", {})
+        self.global_indexes = getattr(cfg, "global_indexes", {})
+        self.index_map = {(self.hash_key,): None}
+        self.possible_keys = {self.hash_key}
+        if self.range_key:
+            self.possible_keys.add(self.range_key)
+            self.index_map = {(self.hash_key, self.range_key): None}
+
+        for name, keys in dict(**self.local_indexes, **self.global_indexes).items():
+            self.index_map[keys] = name
+            for key in keys:
+                self.possible_keys.add(key)
+
+        self.dynamodb = boto3.resource(
+            "dynamodb",
+            region_name=getattr(cfg, "region", "us-east-2"),
+            endpoint_url=getattr(cfg, "endpoint", None),
+        )
 
     def _key_param_to_dict(self, key):
         _key = {
@@ -295,7 +295,7 @@ class Backend:
               query_expr: Optional[Rule] = None,
               filter_expr: Optional[Rule] = None,
               limit: Optional[int] = None,
-              exclusive_start_key: Optional[tuple[Any]] = None,
+              exclusive_start_key: Optional[str] = None,
               order: str = 'asc',
               ):
         table = self.get_table()
@@ -306,7 +306,7 @@ class Backend:
         if limit:
             params["Limit"] = limit
         if exclusive_start_key:
-            params["ExclusiveStartKey"] = self._key_param_to_dict(exclusive_start_key)
+            params["ExclusiveStartKey"] = exclusive_start_key
         if f_expr:
             params["FilterExpression"] = f_expr
 
@@ -347,7 +347,7 @@ class Backend:
                     return []
                 raise e
 
-        return DynamoIterableResult(self.cls, resp, (self._deserialize_record(rec) for rec in resp["Items"]))
+        return DynamoIterableResult(self.cls, resp, (self.serializer.deserialize_record(rec) for rec in resp["Items"]))
 
     def get(self, key):
         _key = self._key_param_to_dict(key)
@@ -363,10 +363,10 @@ class Backend:
                 _key = key
             raise DoesNotExist(f'{self.table_name} "{_key}" does not exist')
 
-        return self._deserialize_record(resp["Item"])
+        return self.serializer.deserialize_record(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        data = self._serialize_record(item.dict(by_alias=True))
+        data = self.serializer.serialize_record(item.dict(by_alias=True))
 
         try:
             if condition:
