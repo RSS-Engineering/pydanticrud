@@ -243,7 +243,7 @@ def alias_query_data(alias_table):
             AliasKeyModel.delete(datum["name"])
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def nested_query_data(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(**i) for i in presets]]
@@ -257,7 +257,7 @@ def nested_query_data(nested_table):
             NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
@@ -460,14 +460,15 @@ def test_query_scan_complex(dynamo, complex_query_data):
 
 def test_query_with_nested_model(dynamo, nested_query_data):
     res = NestedModel.query()
-    res_data = [m.ticket for m in res]
-    assert any(elem is not None for elem in res_data)
+    for m in res:
+        assert m.ticket.created_time is not None
+        assert m.ticket.number is not None
+        assert type(m.ticket) is Ticket
 
 
 def test_query_with_nested_model_optional(dynamo, nested_query_data_empty_ticket):
     res = NestedModel.query()
-    res_data = [m.ticket for m in res]
-    assert any(elem is None for elem in res_data)
+    assert all([m.ticket is None for m in res])
 
 
 def test_query_alias_save(dynamo):
