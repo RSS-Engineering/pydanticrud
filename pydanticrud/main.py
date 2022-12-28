@@ -1,3 +1,4 @@
+import pydantic.error_wrappers
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic.main import ModelMetaclass
 from rule_engine import Rule

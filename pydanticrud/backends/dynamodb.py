@@ -120,18 +120,19 @@ def index_definition(index_name, keys, gsi=False):
 
 class DynamoSerializer:
     def __init__(self, schema):
-        self.schema = schema
+        self.properties = schema["properties"]
+        self.definitions = schema.get("definitions")
+
+    def _get_type(self, field_name):
+        if "$ref" in self.properties[field_name]:
+            def_name = self.properties[field_name]["$ref"].split('/')[-1]
+            return self.definitions[def_name].get("type")
+        return self.properties[field_name].get("type", "anyOf")
 
     def _serialize_field(self, field_name, value):
-        definition = self.schema.get("definitions")
-        schema = self.schema["properties"]
-        if definition:
-            for k, v in definition.items():
-                schema[k.lower()] = v
-        schema = self.schema["properties"]
-        field_type = schema[field_name].get("type", "anyOf")
+        field_type = self._get_type(field_name)
         try:
-            if any([field_name in self.schema['required'], value is not None]):
+            if value is not None:
                 return SERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No serializer for field_type {field_type}")
@@ -147,14 +148,9 @@ class DynamoSerializer:
         }
 
     def _deserialize_field(self, field_name, value):
-        definition = self.schema.get("definitions")
-        schema = self.schema["properties"]
-        if definition:
-            for k, v in definition.items():
-                schema[k.lower()] = v
-        field_type = schema[field_name].get("type", "anyOf")
+        field_type = self._get_type(field_name)
         try:
-            if any([field_name in self.schema['required'], value is not None]):
+            if value is not None:
                 return DESERIALIZE_MAP[field_type](value)
         except KeyError:
             log.debug(f"No deserializer for field_type {field_type}")

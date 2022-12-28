@@ -461,9 +461,9 @@ def test_query_scan_complex(dynamo, complex_query_data):
 def test_query_with_nested_model(dynamo, nested_query_data):
     res = NestedModel.query()
     for m in res:
+        assert isinstance(m.ticket, Ticket)
         assert m.ticket.created_time is not None
         assert m.ticket.number is not None
-        assert type(m.ticket) is Ticket
 
 
 def test_query_with_nested_model_optional(dynamo, nested_query_data_empty_ticket):
