@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from base64 import b64decode, b64encode
 from decimal import Decimal
 from datetime import datetime
@@ -80,11 +80,17 @@ class Ticket(PydanticBaseModel):
     number: str
 
 
+class SomethingElse(PydanticBaseModel):
+    herp: bool
+    derp: int
+
+
 class NestedModel(BaseModel):
     account: str
     sort_date_key: str
     expires: str
     ticket: Optional[Ticket]
+    other: Union[Ticket, SomethingElse]
 
     class Config:
         title = "NestedModelTitle123"
@@ -141,9 +147,20 @@ def nested_model_data_generator(include_ticket=True, **kwargs):
         expires=future_datetime(days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)).isoformat(),
         ticket={
             'created_time': random_datetime().isoformat(),
-            'number': random.randint(0, 1000)
+            'number': str(random.randint(0, 1000))
 
-        } if include_ticket else None
+        } if include_ticket else None,
+        other=random.choice([
+            {
+                'created_time': random_datetime().isoformat(),
+                'number': str(random.randint(0, 1000))
+
+            }, {
+                'herp': random.choice([True, False]),
+                'derp': random.randint(0, 1000)
+
+            }
+        ])
     )
     data.update(kwargs)
     return data
@@ -464,6 +481,7 @@ def test_query_with_nested_model(dynamo, nested_query_data):
         assert isinstance(m.ticket, Ticket)
         assert m.ticket.created_time is not None
         assert m.ticket.number is not None
+        assert isinstance(m.other, (Ticket, SomethingElse))
 
 
 def test_query_with_nested_model_optional(dynamo, nested_query_data_empty_ticket):
@@ -486,5 +504,3 @@ def test_get_alias_model_data(dynamo, alias_query_data):
     data = alias_model_data_generator()
     res = AliasKeyModel.get(alias_query_data[0]['name'])
     assert res.dict(by_alias=True) == alias_query_data[0]
-
-

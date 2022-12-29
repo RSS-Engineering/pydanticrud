@@ -84,7 +84,6 @@ SERIALIZE_MAP = {
     "boolean": lambda d: 1 if d else 0,
     "object": json.dumps,
     "array": json.dumps,
-    "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
 
@@ -98,7 +97,6 @@ DESERIALIZE_MAP = {
     "boolean": bool,
     "object": json.loads,
     "array": json.loads,
-    "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
 
@@ -123,20 +121,28 @@ class DynamoSerializer:
         self.properties = schema["properties"]
         self.definitions = schema.get("definitions")
 
-    def _get_type(self, field_name):
-        if "$ref" in self.properties[field_name]:
-            def_name = self.properties[field_name]["$ref"].split('/')[-1]
-            return self.definitions[def_name].get("type")
-        return self.properties[field_name].get("type", "anyOf")
+    def _get_type_possibilities(self, field_name) -> Set[str]:
+        field_properties = self.properties[field_name]
+
+        possible_types = []
+        if "anyOf" in field_properties:
+            possible_types.extend([r.get("$ref", r.get("type")) for r in field_properties["anyOf"]])
+        else:
+            possible_types.append(field_properties.get("$ref", field_properties.get("type")))
+        return set([
+            (self.definitions[t.split('/')[-1]].get("type") if t.startswith('#/') else t)
+            for t in possible_types
+        ])
 
     def _serialize_field(self, field_name, value):
-        field_type = self._get_type(field_name)
-        try:
-            if value is not None:
-                return SERIALIZE_MAP[field_type](value)
-        except KeyError:
-            log.debug(f"No serializer for field_type {field_type}")
-            return value  # do nothing but log it.
+        field_types = self._get_type_possibilities(field_name)
+        if value is not None:
+            for t in field_types:
+                try:
+                    return SERIALIZE_MAP[t](value)
+                except (ValueError, TypeError, KeyError):
+                    pass
+        return value
 
     def serialize_record(self, data_dict) -> dict:
         """
@@ -148,13 +154,14 @@ class DynamoSerializer:
         }
 
     def _deserialize_field(self, field_name, value):
-        field_type = self._get_type(field_name)
-        try:
-            if value is not None:
-                return DESERIALIZE_MAP[field_type](value)
-        except KeyError:
-            log.debug(f"No deserializer for field_type {field_type}")
-            return value  # do nothing but log it.
+        field_types = self._get_type_possibilities(field_name)
+        if value is not None:
+            for t in field_types:
+                try:
+                    return DESERIALIZE_MAP[t](value)
+                except (ValueError, TypeError, KeyError):
+                    pass
+        return value
 
     def deserialize_record(self, data_dict) -> dict:
         """
@@ -252,7 +259,7 @@ class Backend:
                 {
                     "AttributeName": attr,
                     "AttributeType": DYNAMO_TYPE_MAP.get(
-                        schema["properties"][attr].get("type", "anyOf"), "S"
+                        schema["properties"][attr].get("type"), "S"
                     ),
                 }
                 for attr in self.possible_keys
