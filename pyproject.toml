@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pydanticrud"
-version = "0.1.1"
+version = "0.2.0"
 description = "Supercharge your Pydantic models with CRUD methods and a pluggable backend"
 authors = ["Timothy Farrell <tim.farrell@rackspace.com>"]
 license = "MIT"
