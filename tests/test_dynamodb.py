@@ -1,9 +1,7 @@
 from typing import Dict, List, Optional, Union
-from base64 import b64decode, b64encode
 from decimal import Decimal
 from datetime import datetime
-import json
-from uuid import uuid4
+from uuid import uuid4, UUID
 import random
 
 import docker
@@ -32,6 +30,7 @@ class SimpleKeyModel(BaseModel):
     enabled: bool
     data: Dict[int, int] = None
     items: List[int]
+    hash: UUID
 
     class Config:
         title = "ModelTitle123"
@@ -122,6 +121,7 @@ def simple_model_data_generator(**kwargs):
         enabled=random.choice((True, False)),
         data={random.randint(0, 1000): random.randint(0, 1000)},
         items=[random.randint(0, 100000), random.randint(0, 100000), random.randint(0, 100000)],
+        hash=uuid4()
     )
     data.update(kwargs)
     return data
