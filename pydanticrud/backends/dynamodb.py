@@ -233,7 +233,7 @@ class Backend:
         }
         if self.range_key:
             if not isinstance(key, tuple) or not len(key) == 2:
-                raise ValueError(f"{self.table_name} needs both a hash_key and a range_key to delete a record.")
+                raise ValueError(f"{self.table_name} needs both a hash_key and a range_key.")
             _key = {
                 self.hash_key: key[0],
                 self.range_key: key[1]
