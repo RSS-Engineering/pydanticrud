@@ -1,3 +1,4 @@
+import pydantic.error_wrappers
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic.main import ModelMetaclass
 from rule_engine import Rule
@@ -24,6 +25,9 @@ class IterableResult:
 
     def __iter__(self):
         return self
+
+    def __getitem__(self, indices):
+        return self.records.__getitem__(indices)
 
     def __next__(self):
         try:

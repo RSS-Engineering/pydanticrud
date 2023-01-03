@@ -1,9 +1,7 @@
-from typing import Dict, List, Optional
-from base64 import b64decode, b64encode
+from typing import Dict, List, Optional, Union
 from decimal import Decimal
 from datetime import datetime
-import json
-from uuid import uuid4
+from uuid import uuid4, UUID
 import random
 
 import docker
@@ -32,6 +30,7 @@ class SimpleKeyModel(BaseModel):
     enabled: bool
     data: Dict[int, int] = None
     items: List[int]
+    hash: UUID
 
     class Config:
         title = "ModelTitle123"
@@ -80,11 +79,17 @@ class Ticket(PydanticBaseModel):
     number: str
 
 
+class SomethingElse(PydanticBaseModel):
+    herp: bool
+    derp: int
+
+
 class NestedModel(BaseModel):
     account: str
     sort_date_key: str
     expires: str
     ticket: Optional[Ticket]
+    other: Union[Ticket, SomethingElse]
 
     class Config:
         title = "NestedModelTitle123"
@@ -116,6 +121,7 @@ def simple_model_data_generator(**kwargs):
         enabled=random.choice((True, False)),
         data={random.randint(0, 1000): random.randint(0, 1000)},
         items=[random.randint(0, 100000), random.randint(0, 100000), random.randint(0, 100000)],
+        hash=uuid4()
     )
     data.update(kwargs)
     return data
@@ -141,9 +147,20 @@ def nested_model_data_generator(include_ticket=True, **kwargs):
         expires=future_datetime(days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)).isoformat(),
         ticket={
             'created_time': random_datetime().isoformat(),
-            'number': random.randint(0, 1000)
+            'number': str(random.randint(0, 1000))
 
-        } if include_ticket else None
+        } if include_ticket else None,
+        other=random.choice([
+            {
+                'created_time': random_datetime().isoformat(),
+                'number': str(random.randint(0, 1000))
+
+            }, {
+                'herp': random.choice([True, False]),
+                'derp': random.randint(0, 1000)
+
+            }
+        ])
     )
     data.update(kwargs)
     return data
@@ -243,7 +260,7 @@ def alias_query_data(alias_table):
             AliasKeyModel.delete(datum["name"])
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def nested_query_data(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(**i) for i in presets]]
@@ -257,7 +274,7 @@ def nested_query_data(nested_table):
             NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
@@ -460,14 +477,16 @@ def test_query_scan_complex(dynamo, complex_query_data):
 
 def test_query_with_nested_model(dynamo, nested_query_data):
     res = NestedModel.query()
-    res_data = [m.ticket for m in res]
-    assert any(elem is not None for elem in res_data)
+    for m in res:
+        assert isinstance(m.ticket, Ticket)
+        assert m.ticket.created_time is not None
+        assert m.ticket.number is not None
+        assert isinstance(m.other, (Ticket, SomethingElse))
 
 
 def test_query_with_nested_model_optional(dynamo, nested_query_data_empty_ticket):
     res = NestedModel.query()
-    res_data = [m.ticket for m in res]
-    assert any(elem is None for elem in res_data)
+    assert all([m.ticket is None for m in res])
 
 
 def test_query_alias_save(dynamo):
@@ -485,5 +504,3 @@ def test_get_alias_model_data(dynamo, alias_query_data):
     data = alias_model_data_generator()
     res = AliasKeyModel.get(alias_query_data[0]['name'])
     assert res.dict(by_alias=True) == alias_query_data[0]
-
-

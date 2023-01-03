@@ -1,8 +1,7 @@
-from typing import Optional, Set
+from typing import Optional, Set, Union
 import logging
 import json
 from datetime import datetime
-from base64 import b64encode, b64decode
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -80,25 +79,19 @@ def _to_epoch_float(dt):
 
 SERIALIZE_MAP = {
     "number": str,  # float or decimal
-    "string": lambda d: d.isoformat() if isinstance(d, datetime) else d,  # string, datetime
+    "string": str,
+    "string:date-time": lambda d: d.isoformat(),
     "boolean": lambda d: 1 if d else 0,
     "object": json.dumps,
     "array": json.dumps,
-    "anyOf": str,  # FIXME - this could be more complicated. This is a hacky fix.
 }
-
-
-def do_nothing(x):
-    return x
 
 
 DESERIALIZE_MAP = {
     "number": float,
-    "string": do_nothing,
     "boolean": bool,
     "object": json.loads,
     "array": json.loads,
-    "anyOf": do_nothing,  # FIXME - this could be more complicated. This is a hacky fix.
 }
 
 
@@ -120,22 +113,48 @@ def index_definition(index_name, keys, gsi=False):
 
 class DynamoSerializer:
     def __init__(self, schema):
-        self.schema = schema
+        self.properties = schema["properties"]
+        self.definitions = schema.get("definitions")
+
+    def _get_type_possibilities(self, field_name) -> Set[tuple]:
+        field_properties = self.properties[field_name]
+
+        possible_types = []
+        if "anyOf" in field_properties:
+            possible_types.extend([r.get("$ref", r) for r in field_properties["anyOf"]])
+        else:
+            possible_types.append(field_properties.get("$ref", field_properties))
+
+        def type_from_definition(definition_signature: Union[str, dict]) -> dict:
+            if isinstance(definition_signature, str):
+                t = definition_signature.split('/')[-1]
+                return self.definitions[t]
+            return definition_signature
+
+        type_dicts = [
+            type_from_definition(t)
+            for t in possible_types
+        ]
+
+        return set([
+            (t['type'], t.get('format', ''))
+            for t in type_dicts
+        ])
 
     def _serialize_field(self, field_name, value):
-        definition = self.schema.get("definitions")
-        schema = self.schema["properties"]
-        if definition:
-            for k, v in definition.items():
-                schema[k.lower()] = v
-        schema = self.schema["properties"]
-        field_type = schema[field_name].get("type", "anyOf")
-        try:
-            if any([field_name in self.schema['required'], value is not None]):
-                return SERIALIZE_MAP[field_type](value)
-        except KeyError:
-            log.debug(f"No serializer for field_type {field_type}")
-            return value  # do nothing but log it.
+        field_types = self._get_type_possibilities(field_name)
+        if value is not None:
+            for t in field_types:
+                try:
+                    type_signature = ":".join(t).rstrip(':')
+                    try:
+                        return SERIALIZE_MAP[type_signature](value)
+                    except KeyError:
+                        return SERIALIZE_MAP[t[0]](value)
+                except (ValueError, TypeError, KeyError):
+                    pass
+
+        return value
 
     def serialize_record(self, data_dict) -> dict:
         """
@@ -147,18 +166,19 @@ class DynamoSerializer:
         }
 
     def _deserialize_field(self, field_name, value):
-        definition = self.schema.get("definitions")
-        schema = self.schema["properties"]
-        if definition:
-            for k, v in definition.items():
-                schema[k.lower()] = v
-        field_type = schema[field_name].get("type", "anyOf")
-        try:
-            if any([field_name in self.schema['required'], value is not None]):
-                return DESERIALIZE_MAP[field_type](value)
-        except KeyError:
-            log.debug(f"No deserializer for field_type {field_type}")
-            return value  # do nothing but log it.
+        field_types = self._get_type_possibilities(field_name)
+        if value is not None:
+            for t in field_types:
+                try:
+                    type_signature = ":".join(t).rstrip(':')
+                    try:
+                        return DESERIALIZE_MAP[type_signature](value)
+                    except KeyError:
+                        return DESERIALIZE_MAP[t[0]](value)
+                except (ValueError, TypeError, KeyError):
+                    pass
+
+        return value
 
     def deserialize_record(self, data_dict) -> dict:
         """
@@ -213,7 +233,7 @@ class Backend:
         }
         if self.range_key:
             if not isinstance(key, tuple) or not len(key) == 2:
-                raise ValueError(f"{self.table_name} needs both a hash_key and a range_key to delete a record.")
+                raise ValueError(f"{self.table_name} needs both a hash_key and a range_key.")
             _key = {
                 self.hash_key: key[0],
                 self.range_key: key[1]
@@ -256,7 +276,7 @@ class Backend:
                 {
                     "AttributeName": attr,
                     "AttributeType": DYNAMO_TYPE_MAP.get(
-                        schema["properties"][attr].get("type", "anyOf"), "S"
+                        schema["properties"][attr].get("type"), "S"
                     ),
                 }
                 for attr in self.possible_keys
