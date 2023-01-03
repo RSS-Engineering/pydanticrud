@@ -5,6 +5,7 @@ from datetime import datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
+from boto3.dynamodb.types import TypeSerializer, TypeDeserializer
 from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
@@ -203,7 +204,8 @@ class Backend:
         cfg = cls.Config
         self.cls = cls
         self.schema = cls.schema()
-        self.serializer = DynamoSerializer(self.schema)
+        self.serializer = TypeSerializer()
+        self.deserializer = TypeDeserializer()
         self.hash_key = cfg.hash_key
         self.range_key = getattr(cfg, 'range_key', None)
         self.table_name = cls.get_table_name()
@@ -367,7 +369,7 @@ class Backend:
                     return []
                 raise e
 
-        return DynamoIterableResult(self.cls, resp, (self.serializer.deserialize_record(rec) for rec in resp["Items"]))
+        return DynamoIterableResult(self.cls, resp, (resp["Items"]))
 
     def get(self, key):
         _key = self._key_param_to_dict(key)
@@ -383,20 +385,20 @@ class Backend:
                 _key = key
             raise DoesNotExist(f'{self.table_name} "{_key}" does not exist')
 
-        return self.serializer.deserialize_record(resp["Item"])
+        return self.deserializer.deserialize(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        data = self.serializer.serialize_record(item.dict(by_alias=True))
+        data = self.serializer.serialize(item.dict(by_alias=True))
 
         try:
             if condition:
                 expr, _ = rule_to_boto_expression(condition, self.possible_keys)
                 res = self.get_table().put_item(
-                    Item=data,
+                    Item=self.deserializer.deserialize(data),
                     ConditionExpression=expr,
                 )
             else:
-                res = self.get_table().put_item(Item=data)
+                res = self.get_table().put_item(Item=self.deserializer.deserialize(data))
             return res["ResponseMetadata"]["HTTPStatusCode"] == 200
 
         except ClientError as e:
