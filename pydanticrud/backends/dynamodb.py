@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Optional, Set, Union
 import logging
 import json
@@ -385,10 +386,11 @@ class Backend:
                 _key = key
             raise DoesNotExist(f'{self.table_name} "{_key}" does not exist')
 
-        return self.deserializer.deserialize(resp["Item"])
+        return resp["Item"]
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        data = self.serializer.serialize(item.dict(by_alias=True))
+        ddb_data = json.loads(json.dumps(item.dict(by_alias=True), default=str), parse_float=Decimal)
+        data = self.serializer.serialize(ddb_data)
 
         try:
             if condition:
