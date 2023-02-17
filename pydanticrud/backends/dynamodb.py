@@ -117,13 +117,15 @@ class DynamoSerializer:
         self.definitions = schema.get("definitions")
 
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
-        field_properties = self.properties[field_name]
+        field_properties = self.properties.get(field_name)
 
         possible_types = []
         if "anyOf" in field_properties:
             possible_types.extend([r.get("$ref", r) for r in field_properties["anyOf"]])
-        else:
+        elif isinstance(field_properties, dict):
             possible_types.append(field_properties.get("$ref", field_properties))
+        else:
+            return set()
 
         def type_from_definition(definition_signature: Union[str, dict]) -> dict:
             if isinstance(definition_signature, str):
@@ -154,6 +156,8 @@ class DynamoSerializer:
                 except (ValueError, TypeError, KeyError):
                     pass
 
+        # If we got a value that is not part of the schema, pass it
+        # through and let pydantic sort it out.
         return value
 
     def serialize_record(self, data_dict) -> dict:
