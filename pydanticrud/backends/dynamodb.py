@@ -119,13 +119,14 @@ class DynamoSerializer:
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
         field_properties = self.properties.get(field_name)
 
+        if not field_properties:
+            return set()
+
         possible_types = []
         if "anyOf" in field_properties:
             possible_types.extend([r.get("$ref", r) for r in field_properties["anyOf"]])
-        elif isinstance(field_properties, dict):
-            possible_types.append(field_properties.get("$ref", field_properties))
         else:
-            return set()
+            possible_types.append(field_properties.get("$ref", field_properties))
 
         def type_from_definition(definition_signature: Union[str, dict]) -> dict:
             if isinstance(definition_signature, str):
