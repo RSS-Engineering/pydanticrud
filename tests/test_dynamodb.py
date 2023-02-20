@@ -5,7 +5,7 @@ from uuid import uuid4, UUID
 import random
 
 import docker
-from pydantic import BaseModel as PydanticBaseModel, Field
+from pydantic import BaseModel as PydanticBaseModel, Field, root_validator, ValidationError
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist
@@ -45,6 +45,12 @@ class AliasKeyModel(BaseModel):
     value: int
     name: str
     type_: str = Field(alias="type")
+
+    @root_validator(pre=True)
+    def type_from_typ(cls, values):
+        if 'typ' in values:
+            values['type'] = values.pop('typ')
+        return values
 
     class Config:
         title = "AliasTitle123"
@@ -504,3 +510,13 @@ def test_get_alias_model_data(dynamo, alias_query_data):
     data = alias_model_data_generator()
     res = AliasKeyModel.get(alias_query_data[0]['name'])
     assert res.dict(by_alias=True) == alias_query_data[0]
+
+
+def test_alias_model_validator_ingest(dynamo):
+    data = alias_model_data_generator()
+    AliasKeyModel(**data)
+    data["typ"] = data.pop("type")
+    AliasKeyModel(**data)
+    data.pop("typ")
+    with pytest.raises(ValidationError):
+        AliasKeyModel(**data)

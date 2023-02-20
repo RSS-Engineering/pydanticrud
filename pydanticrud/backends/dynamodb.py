@@ -117,7 +117,10 @@ class DynamoSerializer:
         self.definitions = schema.get("definitions")
 
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
-        field_properties = self.properties[field_name]
+        field_properties = self.properties.get(field_name)
+
+        if not field_properties:
+            return set()
 
         possible_types = []
         if "anyOf" in field_properties:
@@ -154,6 +157,8 @@ class DynamoSerializer:
                 except (ValueError, TypeError, KeyError):
                     pass
 
+        # If we got a value that is not part of the schema, pass it
+        # through and let pydantic sort it out.
         return value
 
     def serialize_record(self, data_dict) -> dict:
