@@ -191,6 +191,8 @@ def dynamo():
 
 @pytest.fixture(scope="module")
 def simple_table(dynamo):
+    import os
+    print(os.popen("docker ps").read())
     if not SimpleKeyModel.exists():
         SimpleKeyModel.initialize()
         assert SimpleKeyModel.exists()
@@ -295,8 +297,6 @@ def nested_query_data_empty_ticket(nested_table):
 
 
 def test_save_get_delete_simple(dynamo, simple_table):
-    import os
-    print(os.popen("docker ps").read())
     data = simple_model_data_generator()
     a = SimpleKeyModel.parse_obj(data)
     a.save()
