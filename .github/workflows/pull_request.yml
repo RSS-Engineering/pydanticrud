@@ -1,0 +1,36 @@
+name: PR Checks
+
+on: [push]
+
+jobs:
+  test:
+    name: "Test"
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: "test"
+      AWS_SECRET_ACCESS_KEY: "test"
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+      - name: cache poetry install
+        uses: actions/cache@v3
+        with:
+          path: ~/.local
+          key: poetry-1.3.2
+      - uses: snok/install-poetry@v1
+        with:
+          version: 1.3.2
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+      - name: cache deps
+        id: cache-deps
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: pydeps-${{ hashFiles('**/poetry.lock') }}
+      - run: poetry install --no-interaction --no-root
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+      - name: Run Unit-tests
+        run: poetry run pytest tests
