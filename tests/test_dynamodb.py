@@ -174,6 +174,7 @@ def nested_model_data_generator(include_ticket=True, **kwargs):
 
 @pytest.fixture(scope="module")
 def dynamo():
+    print("Testing Here")
     client = docker.from_env()
     c = client.containers.run(
         "dwmkerr/dynamodb",
