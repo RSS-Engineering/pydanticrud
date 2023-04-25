@@ -294,6 +294,8 @@ def nested_query_data_empty_ticket(nested_table):
 
 
 def test_save_get_delete_simple(dynamo, simple_table):
+    import os
+    print(os.popen("docker ps").read())
     data = simple_model_data_generator()
     a = SimpleKeyModel.parse_obj(data)
     a.save()
