@@ -1,4 +1,4 @@
-from typing import Optional, Set, Union
+from typing import Optional, Set, Union, Dict, Any
 import logging
 import json
 from datetime import datetime
@@ -374,8 +374,14 @@ class Backend:
 
         return DynamoIterableResult(self.cls, resp, (self.serializer.deserialize_record(rec) for rec in resp["Items"]))
 
-    def get(self, key):
-        _key = self._key_param_to_dict(key)
+    def get(self, key: Union[Dict, Any]):
+        if isinstance(key, dict):
+            try:
+                return self.query(Rule(" AND ".join(f'{k} == {repr(v)}' for k, v in key.items())), limit=1)[0]
+            except IndexError:
+                raise DoesNotExist(f'{self.table_name} "{key}" does not exist')
+
+        _key: Dict[str, str] = self._key_param_to_dict(key)
         try:
             resp = self.get_table().get_item(Key=_key)
         except ClientError as e:
