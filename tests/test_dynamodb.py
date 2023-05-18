@@ -512,6 +512,14 @@ def test_get_alias_model_data(dynamo, alias_query_data):
     assert res.dict(by_alias=True) == alias_query_data[0]
 
 
+def test_get_simple_model_data_via_index(dynamo, simple_query_data):
+    data = simple_model_data_generator()
+    res = SimpleKeyModel.get(simple_query_data[0]['name'])
+    assert res.dict(by_alias=True) == simple_query_data[0]
+    res = SimpleKeyModel.get({"id": simple_query_data[0]['id']})
+    assert res.dict(by_alias=True) == simple_query_data[0]
+
+
 def test_alias_model_validator_ingest(dynamo):
     data = alias_model_data_generator()
     AliasKeyModel(**data)

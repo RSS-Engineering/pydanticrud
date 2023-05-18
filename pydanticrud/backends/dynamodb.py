@@ -1,4 +1,4 @@
-from typing import Optional, Set, Union
+from typing import Optional, Set, Union, Dict, Any
 import logging
 import json
 from datetime import datetime
@@ -102,8 +102,7 @@ def index_definition(index_name, keys, gsi=False):
             "ProjectionType": "ALL",
         },
         "KeySchema": [
-            {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]}
-            for i, attr in enumerate(keys)
+            {"AttributeName": attr, "KeyType": ["HASH", "RANGE"][i]} for i, attr in enumerate(keys)
         ],
     }
     if gsi:
@@ -130,26 +129,20 @@ class DynamoSerializer:
 
         def type_from_definition(definition_signature: Union[str, dict]) -> dict:
             if isinstance(definition_signature, str):
-                t = definition_signature.split('/')[-1]
+                t = definition_signature.split("/")[-1]
                 return self.definitions[t]
             return definition_signature
 
-        type_dicts = [
-            type_from_definition(t)
-            for t in possible_types
-        ]
+        type_dicts = [type_from_definition(t) for t in possible_types]
 
-        return set([
-            (t['type'], t.get('format', ''))
-            for t in type_dicts
-        ])
+        return set([(t["type"], t.get("format", "")) for t in type_dicts])
 
     def _serialize_field(self, field_name, value):
         field_types = self._get_type_possibilities(field_name)
         if value is not None:
             for t in field_types:
                 try:
-                    type_signature = ":".join(t).rstrip(':')
+                    type_signature = ":".join(t).rstrip(":")
                     try:
                         return SERIALIZE_MAP[type_signature](value)
                     except KeyError:
@@ -175,7 +168,7 @@ class DynamoSerializer:
         if value is not None:
             for t in field_types:
                 try:
-                    type_signature = ":".join(t).rstrip(':')
+                    type_signature = ":".join(t).rstrip(":")
                     try:
                         return DESERIALIZE_MAP[type_signature](value)
                     except KeyError:
@@ -210,7 +203,7 @@ class Backend:
         self.schema = cls.schema()
         self.serializer = DynamoSerializer(self.schema)
         self.hash_key = cfg.hash_key
-        self.range_key = getattr(cfg, 'range_key', None)
+        self.range_key = getattr(cfg, "range_key", None)
         self.table_name = cls.get_table_name()
 
         self.local_indexes = getattr(cfg, "local_indexes", {})
@@ -239,10 +232,7 @@ class Backend:
         if self.range_key:
             if not isinstance(key, tuple) or not len(key) == 2:
                 raise ValueError(f"{self.table_name} needs both a hash_key and a range_key.")
-            _key = {
-                self.hash_key: key[0],
-                self.range_key: key[1]
-            }
+            _key = {self.hash_key: key[0], self.range_key: key[1]}
         return _key
 
     def _get_best_index(self, keys_used: Set[str]):
@@ -258,12 +248,7 @@ class Backend:
             raise NotImplementedError()
 
         possible_indexes = sorted(
-            [
-                key
-                for key in self.index_map.keys()
-                if set(key).issubset(keys_used)
-            ],
-            key=score_index
+            [key for key in self.index_map.keys() if set(key).issubset(keys_used)], key=score_index
         )
 
         if possible_indexes:
@@ -294,14 +279,12 @@ class Backend:
             ProvisionedThroughput={"ReadCapacityUnits": 1, "WriteCapacityUnits": 1},
         )
         if lsies:
-            table_schema['LocalSecondaryIndexes'] = [
-                index_definition(index_name, keys)
-                for index_name, keys in lsies.items()
+            table_schema["LocalSecondaryIndexes"] = [
+                index_definition(index_name, keys) for index_name, keys in lsies.items()
             ]
         if gsies:
-            table_schema['GlobalSecondaryIndexes'] = [
-                index_definition(index_name, keys, gsi=True)
-                for index_name, keys in gsies.items()
+            table_schema["GlobalSecondaryIndexes"] = [
+                index_definition(index_name, keys, gsi=True) for index_name, keys in gsies.items()
             ]
         table = self.dynamodb.create_table(**table_schema)
         table.wait_until_exists()
@@ -316,13 +299,14 @@ class Backend:
         except ClientError:
             return False
 
-    def query(self,
-              query_expr: Optional[Rule] = None,
-              filter_expr: Optional[Rule] = None,
-              limit: Optional[int] = None,
-              exclusive_start_key: Optional[str] = None,
-              order: str = 'asc',
-              ):
+    def query(
+        self,
+        query_expr: Optional[Rule] = None,
+        filter_expr: Optional[Rule] = None,
+        limit: Optional[int] = None,
+        exclusive_start_key: Optional[str] = None,
+        order: str = "asc",
+    ):
         table = self.get_table()
         f_expr, _ = rule_to_boto_expression(filter_expr) if filter_expr else (None, set())
 
@@ -339,12 +323,14 @@ class Backend:
             q_expr, keys_used = rule_to_boto_expression(query_expr, self.possible_keys)
 
             if not keys_used and not filter_expr:
-                raise ConditionCheckFailed("No keys in query expression. Use a filter expression or add an index.")
+                raise ConditionCheckFailed(
+                    "No keys in query expression. Use a filter expression or add an index."
+                )
 
             index_name = self._get_best_index(keys_used)
             params["KeyConditionExpression"] = q_expr
 
-            if order != 'asc':
+            if order != "asc":
                 params["ScanIndexForward"] = False
 
             if index_name:
@@ -359,10 +345,12 @@ class Backend:
                     return []
                 raise e
             except DynamoDBNeedsKeyConditionError:
-                raise ConditionCheckFailed("Non-key attributes are not valid in the query expression. Use filter "
-                                           "expression")
+                raise ConditionCheckFailed(
+                    "Non-key attributes are not valid in the query expression. Use filter "
+                    "expression"
+                )
         else:
-            if order != 'asc':
+            if order != "asc":
                 raise ConditionCheckFailed("Scans do not support reverse order.")
 
             try:
@@ -372,10 +360,20 @@ class Backend:
                     return []
                 raise e
 
-        return DynamoIterableResult(self.cls, resp, (self.serializer.deserialize_record(rec) for rec in resp["Items"]))
+        return DynamoIterableResult(
+            self.cls, resp, (self.serializer.deserialize_record(rec) for rec in resp["Items"])
+        )
 
-    def get(self, key):
-        _key = self._key_param_to_dict(key)
+    def get(self, key: Union[Dict, Any]):
+        if isinstance(key, dict):
+            try:
+                return self.query(
+                    Rule(" AND ".join(f"{k} == {repr(v)}" for k, v in key.items())), limit=1
+                )[0]
+            except IndexError:
+                raise DoesNotExist(f'{self.table_name} "{key}" does not exist')
+
+        _key: Dict[str, str] = self._key_param_to_dict(key)
         try:
             resp = self.get_table().get_item(Key=_key)
         except ClientError as e:

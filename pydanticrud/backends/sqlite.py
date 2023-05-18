@@ -52,7 +52,9 @@ class Backend:
         type_hints = get_type_hints(cls)
         self._columns = tuple(type_hints.keys())
         self._columns = {
-            field_name: get_column_data(field_type) for field_name, field_type in type_hints.items()
+            field_name: get_column_data(field_type)
+            for field_name, field_type in type_hints.items()
+            if not field_name.startswith("__")
         }
         _non_native_column_types = set(
             col.python_type for col in self._columns.values() if not col.sqlite_native
