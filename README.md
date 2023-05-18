@@ -33,7 +33,7 @@ Finally, add appropriate members to the `Config` class for the chosen backend.
 
 ### Model Methods
 
-`get(id)` - return and instance of the Model from the backend indexed by `id`
+`get(id)` - return and instance of the Model from the backend indexed by `id`.
 
 `exists()` - detect if the model (table) exists in the backend
 
@@ -52,6 +52,13 @@ NOTE: Rule complexity is limited by the querying capabilities of the backend.
 `save()` - store the Model instance to the backend
 
 ### DynamoDB
+
+`get(key: Union[Dict, Any])`
+  - `key` can be any of 3 types:
+  - 
+    - in the case of a single hash_key, a value of type that matches the hash_key
+    - in the case of a hash and range key, a tuple specifying the respective values
+    - a dictionary of the hash and range keys with their names and values. This method can pull for alternate indexes.
 
 `query(query_expr: Optional[Rule], filter_expr: Optional[Rule], limit: Optional[str], exclusive_start_key: Optional[tuple[Any]], order: str = 'asc'`
   - Providing a `query_expr` parameter will try to apply the keys of the expression to an
