@@ -18,12 +18,3 @@ repos:
         stages: [push]
         pass_filenames: false
         always_run: true
-#  - repo: local
-#    hooks:
-#      - id: mypy-check-restapi
-#        name: mypy-check (rest-api)
-#        entry: bash -c "(cd packages/rest_api && poetry run mypy rest_api/application.py)"
-#        language: system
-#        stages: [push]
-#        pass_filenames: false
-#        always_run: true
