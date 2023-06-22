@@ -51,8 +51,6 @@ NOTE: Rule complexity is limited by the querying capabilities of the backend.
 
 `save()` - store the Model instance to the backend
 
-`batch_save()` - store the List of Model instance to the backend
-
 ### DynamoDB
 
 `get(key: Union[Dict, Any])`

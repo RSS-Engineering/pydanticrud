@@ -11,7 +11,6 @@ from rule_engine import Rule, ast, types
 
 from ..main import IterableResult
 from ..exceptions import DoesNotExist, ConditionCheckFailed
-from ..dynamo_type_serializer import DynamoTypeSerializer
 
 log = logging.getLogger(__name__)
 
@@ -87,16 +86,13 @@ SERIALIZE_MAP = {
     "array": json.dumps,
 }
 
+
 DESERIALIZE_MAP = {
     "number": float,
     "boolean": bool,
     "object": json.loads,
     "array": json.loads,
 }
-
-
-def chunk_list(lst, size):
-    return [lst[i: i + size] for i in range(0, len(lst), size)]
 
 
 def index_definition(index_name, keys, gsi=False):
@@ -114,10 +110,9 @@ def index_definition(index_name, keys, gsi=False):
     return schema
 
 
-class DynamoSerializer(DynamoTypeSerializer):
+class DynamoSerializer:
     def __init__(self, schema):
-        super().__init__()
-        self.properties = schema.get("properties")
+        self.properties = schema["properties"]
         self.definitions = schema.get("definitions")
 
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
@@ -414,32 +409,3 @@ class Backend:
 
     def delete(self, key):
         self.get_table().delete_item(Key=self._key_param_to_dict(key))
-
-    def batch_save(self, items: list) -> dict:
-        """
-        This function is to write multiple records in to dynamodb and returns unprocessed records in dict
-        if something gone wrong with the record.This will by default try 3 time if any unprocessed
-        records exists in result. Currently, batch_write is not supporting ConditionExpression
-        Refer docs:
-        https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html
-        """
-        # Prepare the batch write requests
-        request_items = {self.table_name: []}
-
-        # chunk list for size limit of 25 items to write using this batch_write operation refer below.
-        # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html#:~:text=The%20BatchWriteItem%20operation,Data%20Types.
-        for chunk in chunk_list(items, 20):
-            serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]
-            for serialized_item in serialized_items:
-                request_items[self.table_name].append({"PutRequest":
-                                                           {"Item": serialized_item }#self.serializer.serialize_item(serialized_item)}
-                                                       })
-        try:
-            response = self.dynamodb.batch_write_item(RequestItems=request_items)
-        except ClientError as e:
-            raise e
-        except (ValueError, TypeError, KeyError) as ex:
-            raise ex
-        unprocessed_items = response.get("UnprocessedItems", {})
-        # Return any unprocessed items
-        return unprocessed_items

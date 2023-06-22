@@ -5,7 +5,6 @@ from uuid import uuid4, UUID
 import random
 
 import docker
-from botocore.exceptions import ClientError
 from pydantic import BaseModel as PydanticBaseModel, Field, root_validator, ValidationError
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
@@ -67,7 +66,6 @@ class ComplexKeyModel(BaseModel):
     category_id: int
     notification_id: str
     thread_id: str
-    body: str = 'some random string'
 
     class Config:
         title = "ComplexModelTitle123"
@@ -398,7 +396,7 @@ def test_query_with_hash_key_complex(dynamo, complex_query_data):
 
 @pytest.mark.parametrize('order', ('asc', 'desc'))
 def test_ordered_query_with_hash_key_complex(dynamo, complex_query_data, order):
-    middle_record = complex_query_data[(len(complex_query_data) // 2)]
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
     res = ComplexKeyModel.query(
         Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'"),
         order=order
@@ -416,9 +414,8 @@ def test_ordered_query_with_hash_key_complex(dynamo, complex_query_data, order):
 @pytest.mark.parametrize('order', ('asc', 'desc'))
 def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, order):
     page_size = 2
-    middle_record = complex_query_data[(len(complex_query_data) // 2)]
-    query_rule = Rule(
-        f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'")
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'")
     res = ComplexKeyModel.query(query_rule, order=order, limit=page_size)
     res_data = [(m.account, m.sort_date_key) for m in res]
     check_data = sorted([
@@ -435,13 +432,13 @@ def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, orde
         (m["account"], m["sort_date_key"])
         for m in complex_query_data
         if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
-    ], reverse=order == 'desc')[page_size:page_size * 2]
+    ], reverse=order == 'desc')[page_size:page_size*2]
     assert res_data == check_data
 
 
 def test_pagination_query_with_index_complex(dynamo, complex_query_data):
     page_size = 2
-    middle_record = complex_query_data[(len(complex_query_data) // 2)]
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
     query_rule = Rule(f"account == '{middle_record['account']}' and category_id >= {middle_record['category_id']}")
     check_data = ComplexKeyModel.query(query_rule)
     res = ComplexKeyModel.query(query_rule, limit=page_size)
@@ -531,28 +528,3 @@ def test_alias_model_validator_ingest(dynamo):
     data.pop("typ")
     with pytest.raises(ValidationError):
         AliasKeyModel(**data)
-
-
-def test_batch_write(dynamo, complex_table):
-    response = {"UnprocessedItems": {}}
-    data = [
-        ComplexKeyModel.parse_obj(complex_model_data_generator())
-        for x in range(0, 10)
-    ]
-    un_proc = ComplexKeyModel.batch_save(data)
-    assert un_proc == response["UnprocessedItems"]
-    res_get = ComplexKeyModel.get((data[0].account, data[0].sort_date_key))
-    res_query = ComplexKeyModel.query(Rule(f"account == '{data[0].account}' and sort_date_key == '{data[0].sort_date_key}'"))
-    assert res_get == data[0]
-    assert res_query.count == 1
-    assert res_query.records == [data[0]]
-
-
-def test_message_batch_write_client_exception(dynamo, complex_table):
-    data = [
-        ComplexKeyModel.parse_obj(complex_model_data_generator(body="some big string"*10000))
-        for x in range(0, 2)
-    ]
-    with pytest.raises(ClientError) as exc:
-        ComplexKeyModel.batch_save(data)
-    assert exc.value.response['Error']['Message'] == 'Item size has exceeded the maximum allowed size'
