@@ -429,8 +429,7 @@ class Backend:
         for chunk in chunk_list(items, 25):
             serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]
             for serialized_item in serialized_items:
-                request_items[self.table_name].append({"PutRequest": {"Item": serialized_item}
-                                                       })
+                request_items[self.table_name].append({"PutRequest": {"Item": serialized_item}})
         try:
             response = self.dynamodb.batch_write_item(RequestItems=request_items)
         except ClientError as e:
@@ -438,5 +437,4 @@ class Backend:
         except (ValueError, TypeError, KeyError) as ex:
             raise ex
         unprocessed_items = response.get("UnprocessedItems", {})
-        # Return any unprocessed items
         return unprocessed_items
