@@ -96,7 +96,7 @@ DESERIALIZE_MAP = {
 
 
 def chunk_list(lst, size):
-    return [lst[i : i + size] for i in range(0, len(lst), size)]
+    return [lst[i: i + size] for i in range(0, len(lst), size)]
 
 
 def index_definition(index_name, keys, gsi=False):
@@ -429,17 +429,11 @@ class Backend:
         # chunk list for size limit of 25 items to write using this batch_write operation refer below.
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html#:~:text=The%20BatchWriteItem%20operation,Data%20Types.
         for chunk in chunk_list(items, 20):
-            serialized_items = [
-                self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk
-            ]
+            serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]
             for serialized_item in serialized_items:
-                request_items[self.table_name].append(
-                    {
-                        "PutRequest": {
-                            "Item": serialized_item
-                        }  # self.serializer.serialize_item(serialized_item)}
-                    }
-                )
+                request_items[self.table_name].append({"PutRequest":
+                                                           {"Item": serialized_item }#self.serializer.serialize_item(serialized_item)}
+                                                       })
         try:
             response = self.dynamodb.batch_write_item(RequestItems=request_items)
         except ClientError as e:

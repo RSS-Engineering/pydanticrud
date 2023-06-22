@@ -3,7 +3,6 @@ from typing import Any, Mapping, Union
 
 NoneType = type(None)
 
-
 class DynamoTypeSerializer:
     def __init__(self):
         self._methods = {
@@ -21,10 +20,12 @@ class DynamoTypeSerializer:
         return {k: self.serialize(v) for k, v in item.items()}
 
     def serialize_mapping(self, value: Mapping) -> dict:
-        return {"M": {k: self.serialize(v) for k, v in value.items()}}
+        return {
+            'M': {k: self.serialize(v) for k, v in value.items()}
+        }
 
     def serialize_list(self, value: Union[list, tuple]) -> dict:
-        return {"L": [self.serialize(item) for item in value]}
+        return {'L': [self.serialize(item) for item in value]}
 
     def serialize(self, value: Any):
         value_type = type(value)
@@ -37,20 +38,17 @@ class DynamoTypeSerializer:
                     return route(value)
         else:
             return route(value)
-        raise TypeError(f"The value {value} is not Dynamodb serializable type.")
-
+        raise TypeError(f'The value {value} is not Dynamodb serializable type.')
 
 def serialize_bool(value: bool) -> dict:
-    return {"BOOL": value}
-
+    return {'BOOL': value}
 
 def serialize_number(value: Union[int, float, decimal.Decimal]) -> dict:
-    return {"N": str(value)}
-
+    return {'N': str(value)}
 
 def serialize_none(value: None) -> dict:
-    return {"NULL": True}
-
+    return {'NULL': True}
 
 def serialize_str(value: str) -> dict:
-    return {"S": value}
+    return {'S': value}
+
