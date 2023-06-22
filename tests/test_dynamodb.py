@@ -49,8 +49,8 @@ class AliasKeyModel(BaseModel):
 
     @root_validator(pre=True)
     def type_from_typ(cls, values):
-        if "typ" in values:
-            values["type"] = values.pop("typ")
+        if 'typ' in values:
+            values['type'] = values.pop('typ')
         return values
 
     class Config:
@@ -78,7 +78,7 @@ class ComplexKeyModel(BaseModel):
         local_indexes = {
             "by-category": ("account", "category_id"),
             "by-notification": ("account", "notification_id"),
-            "by-thread": ("account", "thread_id"),
+            "by-thread": ("account", "thread_id")
         }
 
 
@@ -112,7 +112,7 @@ def alias_model_data_generator(**kwargs):
         id=random.randint(0, 100000),
         value=random.randint(0, 100000),
         name=random_unique_name(),
-        type="aliasType",
+        type="aliasType"
     )
     data.update(kwargs)
     return data
@@ -129,7 +129,7 @@ def simple_model_data_generator(**kwargs):
         enabled=random.choice((True, False)),
         data={random.randint(0, 1000): random.randint(0, 1000)},
         items=[random.randint(0, 100000), random.randint(0, 100000), random.randint(0, 100000)],
-        hash=uuid4(),
+        hash=uuid4()
     )
     data.update(kwargs)
     return data
@@ -139,12 +139,10 @@ def complex_model_data_generator(**kwargs):
     data = dict(
         account=str(uuid4()),
         sort_date_key=random_datetime().isoformat(),
-        expires=future_datetime(
-            days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)
-        ).isoformat(),
+        expires=future_datetime(days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)).isoformat(),
         category_id=random.randint(1, 15),
         notification_id=str(uuid4()),
-        thread_id=str(uuid4()),
+        thread_id=str(uuid4())
     )
     data.update(kwargs)
     return data
@@ -154,24 +152,23 @@ def nested_model_data_generator(include_ticket=True, **kwargs):
     data = dict(
         account=str(uuid4()),
         sort_date_key=random_datetime().isoformat(),
-        expires=future_datetime(
-            days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)
-        ).isoformat(),
+        expires=future_datetime(days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)).isoformat(),
         ticket={
-            "created_time": random_datetime().isoformat(),
-            "number": str(random.randint(0, 1000)),
-        }
-        if include_ticket
-        else None,
-        other=random.choice(
-            [
-                {
-                    "created_time": random_datetime().isoformat(),
-                    "number": str(random.randint(0, 1000)),
-                },
-                {"herp": random.choice([True, False]), "derp": random.randint(0, 1000)},
-            ]
-        ),
+            'created_time': random_datetime().isoformat(),
+            'number': str(random.randint(0, 1000))
+
+        } if include_ticket else None,
+        other=random.choice([
+            {
+                'created_time': random_datetime().isoformat(),
+                'number': str(random.randint(0, 1000))
+
+            }, {
+                'herp': random.choice([True, False]),
+                'derp': random.randint(0, 1000)
+
+            }
+        ])
     )
     data.update(kwargs)
     return data
@@ -246,7 +243,8 @@ def complex_query_data(complex_table):
     accounts = [str(uuid4()) for i in range(4)]
 
     data = [
-        complex_model_data_generator(account=accounts[i % 4], body="some random string", **p) for i, p in enumerate(presets)
+        complex_model_data_generator(account=accounts[i % 4], body="some random string", **p)
+        for i, p in enumerate(presets)
     ]
     for datum in data:
         ComplexKeyModel.parse_obj(datum).save()
@@ -254,9 +252,7 @@ def complex_query_data(complex_table):
         yield data
     finally:
         for datum in data:
-            ComplexKeyModel.delete(
-                (datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key])
-            )
+            ComplexKeyModel.delete((datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key]))
 
 
 @pytest.fixture(scope="module")
@@ -283,26 +279,20 @@ def nested_query_data(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete(
-                (datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key])
-            )
+            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
 
 
 @pytest.fixture
 def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
-    data = [
-        datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]
-    ]
+    data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
     for datum in data:
         NestedModel.parse_obj(datum).save()
     try:
         yield data
     finally:
         for datum in data:
-            NestedModel.delete(
-                (datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key])
-            )
+            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
 
 
 def test_save_get_delete_simple(dynamo, simple_table):
@@ -329,17 +319,16 @@ def test_query_with_hash_key_simple(dynamo, simple_query_data):
 def test_scan_errors_with_order(dynamo, simple_query_data):
     data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    with pytest.raises(ConditionCheckFailed, match=r"Scans do not support reverse order."):
-        SimpleKeyModel.query(order="desc")
+    with pytest.raises(ConditionCheckFailed,
+                       match=r"Scans do not support reverse order."):
+        SimpleKeyModel.query(order='desc')
 
 
 def test_query_errors_with_nonprimary_key_simple(dynamo, simple_query_data):
     data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    with pytest.raises(
-        ConditionCheckFailed,
-        match=r"No keys in query expression. Use a filter expression or add an index.",
-    ):
+    with pytest.raises(ConditionCheckFailed,
+                       match=r"No keys in query expression. Use a filter expression or add an index."):
         SimpleKeyModel.query(Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
 
 
@@ -351,29 +340,19 @@ def test_query_with_indexed_hash_key_simple(dynamo, simple_query_data):
     assert res_data == {data_by_timestamp[0]["name"]: data_by_timestamp[0]}
 
 
-def test_query_with_indexed_hash_key_and_additional_nonindexed_key_simple(
-    dynamo, simple_query_data
-):
+def test_query_with_indexed_hash_key_and_additional_nonindexed_key_simple(dynamo, simple_query_data):
     data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    with pytest.raises(
-        ConditionCheckFailed,
-        match="Non-key attributes are not valid in the query expression. Use filter expression",
-    ):
-        SimpleKeyModel.query(
-            Rule(
-                f"id == {data_by_timestamp[0]['id']} and timestamp == '"
-                f"{data_by_timestamp[0]['timestamp']}'"
-            )
-        )
+    with pytest.raises(ConditionCheckFailed,
+                       match="Non-key attributes are not valid in the query expression. Use filter expression"):
+        SimpleKeyModel.query(Rule(f"id == {data_by_timestamp[0]['id']} and timestamp == '"
+                                  f"{data_by_timestamp[0]['timestamp']}'"))
 
 
 def test_query_scan_simple(dynamo, simple_query_data):
     data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
-    res = SimpleKeyModel.query(
-        filter_expr=Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'")
-    )
+    res = SimpleKeyModel.query(filter_expr=Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'"))
     res_data = {m.name: m.dict() for m in res}
     assert res_data == {d["name"]: d for d in data_by_timestamp[:2]}
 
@@ -394,7 +373,10 @@ def test_save_get_delete_complex(dynamo, complex_table):
     finally:
         ComplexKeyModel.delete((data["account"], data["sort_date_key"]))
 
-    key = {"account": data["account"], "sort_date_key": data["sort_date_key"]}
+    key = {
+        "account": data["account"],
+        "sort_date_key": data["sort_date_key"]
+    }
 
     with pytest.raises(DoesNotExist, match=f'complexmodeltitle123 "{key}" does not exist'):
         ComplexKeyModel.get((data["account"], data["sort_date_key"]))
@@ -403,107 +385,74 @@ def test_save_get_delete_complex(dynamo, complex_table):
 def test_query_with_hash_key_complex(dynamo, complex_query_data):
     record = complex_query_data[0]
     res = ComplexKeyModel.query(
-        Rule(f"account == '{record['account']}' and sort_date_key == '{record['sort_date_key']}'")
-    )
+        Rule(f"account == '{record['account']}' and sort_date_key == '{record['sort_date_key']}'"))
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
     # Check that it works regardless of query attribute order
     res = ComplexKeyModel.query(
-        Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'")
-    )
+        Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'"))
     res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
 
-@pytest.mark.parametrize("order", ("asc", "desc"))
+@pytest.mark.parametrize('order', ('asc', 'desc'))
 def test_ordered_query_with_hash_key_complex(dynamo, complex_query_data, order):
-    middle_record = complex_query_data[(len(complex_query_data) // 2)]
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
     res = ComplexKeyModel.query(
-        Rule(
-            f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'"
-        ),
-        order=order,
+        Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'"),
+        order=order
     )
     res_data = [(m.account, m.sort_date_key) for m in res]
-    check_data = sorted(
-        [
-            (m["account"], m["sort_date_key"])
-            for m in complex_query_data
-            if m["account"] == middle_record["account"]
-            and m["sort_date_key"] >= middle_record["sort_date_key"]
-        ],
-        reverse=order == "desc",
-    )
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')
 
     assert res_data == check_data
 
 
-@pytest.mark.parametrize("order", ("asc", "desc"))
+@pytest.mark.parametrize('order', ('asc', 'desc'))
 def test_pagination_query_with_hash_key_complex(dynamo, complex_query_data, order):
     page_size = 2
-    middle_record = complex_query_data[(len(complex_query_data) // 2)]
-    query_rule = Rule(
-        f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'"
-    )
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and sort_date_key >= '{middle_record['sort_date_key']}'")
     res = ComplexKeyModel.query(query_rule, order=order, limit=page_size)
     res_data = [(m.account, m.sort_date_key) for m in res]
-    check_data = sorted(
-        [
-            (m["account"], m["sort_date_key"])
-            for m in complex_query_data
-            if m["account"] == middle_record["account"]
-            and m["sort_date_key"] >= middle_record["sort_date_key"]
-        ],
-        reverse=order == "desc",
-    )[:page_size]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')[:page_size]
     assert res_data == check_data
-    assert res.last_evaluated_key == {
-        "account": check_data[-1][0],
-        "sort_date_key": check_data[-1][1],
-    }
+    assert res.last_evaluated_key == {"account": check_data[-1][0], "sort_date_key": check_data[-1][1]}
 
-    res = ComplexKeyModel.query(
-        query_rule, order=order, limit=page_size, exclusive_start_key=res.last_evaluated_key
-    )
+    res = ComplexKeyModel.query(query_rule, order=order, limit=page_size, exclusive_start_key=res.last_evaluated_key)
     res_data = [(m.account, m.sort_date_key) for m in res]
-    check_data = sorted(
-        [
-            (m["account"], m["sort_date_key"])
-            for m in complex_query_data
-            if m["account"] == middle_record["account"]
-            and m["sort_date_key"] >= middle_record["sort_date_key"]
-        ],
-        reverse=order == "desc",
-    )[page_size : page_size * 2]
+    check_data = sorted([
+        (m["account"], m["sort_date_key"])
+        for m in complex_query_data
+        if m["account"] == middle_record['account'] and m["sort_date_key"] >= middle_record['sort_date_key']
+    ], reverse=order == 'desc')[page_size:page_size*2]
     assert res_data == check_data
 
 
 def test_pagination_query_with_index_complex(dynamo, complex_query_data):
     page_size = 2
-    middle_record = complex_query_data[(len(complex_query_data) // 2)]
-    query_rule = Rule(
-        f"account == '{middle_record['account']}' and category_id >= {middle_record['category_id']}"
-    )
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and category_id >= {middle_record['category_id']}")
     check_data = ComplexKeyModel.query(query_rule)
     res = ComplexKeyModel.query(query_rule, limit=page_size)
-    res_data = [
-        {"account": m.account, "category_id": m.category_id, "sort_date_key": m.sort_date_key}
-        for m in res
-    ]
+    res_data = [{"account": m.account, "category_id": m.category_id, "sort_date_key": m.sort_date_key} for m in res]
     # We only check for inclusion because the category index order is not going to be the same and since there are
     # multiple records per category, it's unknowable outside of the query response.
     assert all([r in check_data for r in res])
     assert len(res) == page_size
-    assert res.last_evaluated_key == {
-        "account": res_data[-1]["account"],
-        "category_id": res_data[-1]["category_id"],
-        "sort_date_key": res_data[-1]["sort_date_key"],
-    }
+    assert res.last_evaluated_key == {"account": res_data[-1]["account"], "category_id": res_data[-1]["category_id"],
+                                      "sort_date_key": res_data[-1]["sort_date_key"]}
 
-    res = ComplexKeyModel.query(
-        query_rule, limit=page_size, exclusive_start_key=res.last_evaluated_key
-    )
+    res = ComplexKeyModel.query(query_rule, limit=page_size, exclusive_start_key=res.last_evaluated_key)
     assert all([r in check_data for r in res])
     assert len(res) == page_size
 
@@ -511,23 +460,17 @@ def test_pagination_query_with_index_complex(dynamo, complex_query_data):
 def test_query_errors_with_nonprimary_key_complex(dynamo, complex_query_data):
     data_by_expires = complex_query_data[:]
     data_by_expires.sort(key=lambda d: d["expires"])
-    with pytest.raises(
-        ConditionCheckFailed, match=r"No keys in expression. Enable scan or add an index."
-    ):
+    with pytest.raises(ConditionCheckFailed, match=r"No keys in expression. Enable scan or add an index."):
         ComplexKeyModel.query(Rule(f"notification_id <= '{data_by_expires[2]['notification_id']}'"))
 
 
 def test_query_with_indexed_hash_key_complex(dynamo, complex_query_data):
     record = complex_query_data[0]
-    res = ComplexKeyModel.query(
-        Rule(f"account == '{record['account']}' and thread_id == '{record['thread_id']}'")
-    )
+    res = ComplexKeyModel.query(Rule(f"account == '{record['account']}' and thread_id == '{record['thread_id']}'"))
     res_data = {(m.account, m.thread_id): m.dict() for m in res}
     assert res_data == {(record["account"], record["thread_id"]): record}
 
-    res = ComplexKeyModel.query(
-        Rule(f"thread_id == '{record['thread_id']}' and account == '{record['account']}'")
-    )
+    res = ComplexKeyModel.query(Rule(f"thread_id == '{record['thread_id']}' and account == '{record['account']}'"))
     res_data = {(m.account, m.thread_id): m.dict() for m in res}
     assert res_data == {(record["account"], record["thread_id"]): record}
 
@@ -567,15 +510,15 @@ def test_query_alias_save(dynamo):
 
 def test_get_alias_model_data(dynamo, alias_query_data):
     data = alias_model_data_generator()
-    res = AliasKeyModel.get(alias_query_data[0]["name"])
+    res = AliasKeyModel.get(alias_query_data[0]['name'])
     assert res.dict(by_alias=True) == alias_query_data[0]
 
 
 def test_get_simple_model_data_via_index(dynamo, simple_query_data):
     data = simple_model_data_generator()
-    res = SimpleKeyModel.get(simple_query_data[0]["name"])
+    res = SimpleKeyModel.get(simple_query_data[0]['name'])
     assert res.dict(by_alias=True) == simple_query_data[0]
-    res = SimpleKeyModel.get({"id": simple_query_data[0]["id"]})
+    res = SimpleKeyModel.get({"id": simple_query_data[0]['id']})
     assert res.dict(by_alias=True) == simple_query_data[0]
 
 

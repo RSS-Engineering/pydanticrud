@@ -416,15 +416,15 @@ class Backend:
     def batch_save(self, items: list) -> dict:
         """
         This function is to write multiple records in to dynamodb and returns unprocessed records in dict
-        if something gone wrong with the record.This will by default try 3 time if any unprocessed
-        records exists in result. Currently, batch_write is not supporting ConditionExpression
+        if something gone wrong with the record.Currently, batch_write is not supporting ConditionExpression
         Refer docs:
         https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html
         """
         # Prepare the batch write requests
         request_items = {self.table_name: []}
 
-        # chunk list for size limit of 25 items to write using this batch_write operation refer below.
+        # chunk list for size limit of 25 items to write using this batch_write operation refer below.However
+        # we are just trying with 20 items.
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html#:~:text=The%20BatchWriteItem%20operation,Data%20Types.
         for chunk in chunk_list(items, 20):
             serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]

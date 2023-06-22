@@ -15,7 +15,7 @@ def random_datetime():
         random.randint(1, 28),
         random.randint(1, 12),
         random.randint(1, 59),
-        0,
+        0
     )
 
 
