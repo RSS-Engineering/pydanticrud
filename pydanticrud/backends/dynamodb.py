@@ -431,8 +431,7 @@ class Backend:
         for chunk in chunk_list(items, 20):
             serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]
             for serialized_item in serialized_items:
-                request_items[self.table_name].append({"PutRequest":
-                                                           {"Item": serialized_item }#self.serializer.serialize_item(serialized_item)}
+                request_items[self.table_name].append({"PutRequest": {"Item": serialized_item}
                                                        })
         try:
             response = self.dynamodb.batch_write_item(RequestItems=request_items)
