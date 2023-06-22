@@ -9,9 +9,9 @@ from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
+from ..dynamo_type_serializer import DynamoTypeSerializer
 from ..main import IterableResult
 from ..exceptions import DoesNotExist, ConditionCheckFailed
-from ..dynamo_type_serializer import DynamoTypeSerializer
 
 log = logging.getLogger(__name__)
 
