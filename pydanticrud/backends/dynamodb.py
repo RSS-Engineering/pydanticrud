@@ -423,10 +423,9 @@ class Backend:
         # Prepare the batch write requests
         request_items = {self.table_name: []}
 
-        # chunk list for size limit of 25 items to write using this batch_write operation refer below.However
-        # we are just trying with 20 items.
+        # chunk list for size limit of 25 items to write using this batch_write operation refer below.
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html#:~:text=The%20BatchWriteItem%20operation,Data%20Types.
-        for chunk in chunk_list(items, 20):
+        for chunk in chunk_list(items, 25):
             serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]
             for serialized_item in serialized_items:
                 request_items[self.table_name].append({"PutRequest": {"Item": serialized_item}
