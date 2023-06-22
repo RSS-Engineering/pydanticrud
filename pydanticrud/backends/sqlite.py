@@ -193,4 +193,4 @@ class Backend:
         self._conn.execute(f"DELETE FROM {self.table_name} WHERE {self.hash_key} = ?;", [item_key])
 
     def batch_save(self, items: dict):
-        pass
+        raise NotImplementedError("This functionality is not yet implemented")
