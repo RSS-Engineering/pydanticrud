@@ -9,7 +9,6 @@ from boto3.exceptions import DynamoDBNeedsKeyConditionError
 from botocore.exceptions import ClientError
 from rule_engine import Rule, ast, types
 
-from ..dynamo_type_serializer import DynamoTypeSerializer
 from ..main import IterableResult
 from ..exceptions import DoesNotExist, ConditionCheckFailed
 
@@ -114,9 +113,8 @@ def index_definition(index_name, keys, gsi=False):
     return schema
 
 
-class DynamoSerializer(DynamoTypeSerializer):
+class DynamoSerializer:
     def __init__(self, schema):
-        super().__init__()
         self.properties = schema.get("properties")
         self.definitions = schema.get("definitions")
 
