@@ -191,3 +191,6 @@ class Backend:
 
     def delete(self, item_key: str):
         self._conn.execute(f"DELETE FROM {self.table_name} WHERE {self.hash_key} = ?;", [item_key])
+
+    def batch_save(self, items: dict):
+        pass
