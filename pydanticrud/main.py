@@ -73,3 +73,7 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
     @classmethod
     def delete(cls, *args, **kwargs):
         cls.__backend__.delete(*args, **kwargs)
+
+    @classmethod
+    def batch_save(cls, *args, **kwargs):
+        return cls.__backend__.batch_save(*args, **kwargs)

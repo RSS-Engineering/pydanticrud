@@ -5,6 +5,7 @@ from uuid import uuid4, UUID
 import random
 
 import docker
+from botocore.exceptions import ClientError
 from pydantic import BaseModel as PydanticBaseModel, Field, root_validator, ValidationError
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
@@ -66,6 +67,7 @@ class ComplexKeyModel(BaseModel):
     category_id: int
     notification_id: str
     thread_id: str
+    body: str = "some random string"
 
     class Config:
         title = "ComplexModelTitle123"
@@ -241,7 +243,7 @@ def complex_query_data(complex_table):
     accounts = [str(uuid4()) for i in range(4)]
 
     data = [
-        complex_model_data_generator(account=accounts[i % 4], **p)
+        complex_model_data_generator(account=accounts[i % 4], body="some random string", **p)
         for i, p in enumerate(presets)
     ]
     for datum in data:
@@ -528,3 +530,29 @@ def test_alias_model_validator_ingest(dynamo):
     data.pop("typ")
     with pytest.raises(ValidationError):
         AliasKeyModel(**data)
+
+
+def test_batch_write(dynamo, complex_table):
+    response = {"UnprocessedItems": {}}
+    data = [ComplexKeyModel.parse_obj(complex_model_data_generator()) for x in range(0, 10)]
+    un_proc = ComplexKeyModel.batch_save(data)
+    assert un_proc == response["UnprocessedItems"]
+    res_get = ComplexKeyModel.get((data[0].account, data[0].sort_date_key))
+    res_query = ComplexKeyModel.query(
+        Rule(f"account == '{data[0].account}' and sort_date_key == '{data[0].sort_date_key}'")
+    )
+    assert res_get == data[0]
+    assert res_query.count == 1
+    assert res_query.records == [data[0]]
+
+
+def test_message_batch_write_client_exception(dynamo, complex_table):
+    data = [
+        ComplexKeyModel.parse_obj(complex_model_data_generator(body="some big string" * 10000))
+        for x in range(0, 2)
+    ]
+    with pytest.raises(ClientError) as exc:
+        ComplexKeyModel.batch_save(data)
+    assert (
+        exc.value.response["Error"]["Message"] == "Item size has exceeded the maximum allowed size"
+    )
