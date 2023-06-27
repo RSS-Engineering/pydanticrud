@@ -1,6 +1,6 @@
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4, UUID
 import random
 
@@ -26,6 +26,7 @@ class SimpleKeyModel(BaseModel):
     name: str
     total: float
     timestamp: datetime
+    expires: datetime
     sigfig: Decimal
     enabled: bool
     data: Dict[int, int] = None
@@ -35,6 +36,7 @@ class SimpleKeyModel(BaseModel):
     class Config:
         title = "ModelTitle123"
         hash_key = "name"
+        ttl = "expires"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
         global_indexes = {"by-id": ("id",)}
@@ -123,6 +125,7 @@ def simple_model_data_generator(**kwargs):
         name=random_unique_name(),
         total=round(random.random(), 9),
         timestamp=random_datetime(),
+        expires=(datetime.utcnow() + timedelta(seconds=random.randint(0, 10))).replace(tzinfo=timezone.utc),
         sigfig=Decimal(str(random.random())[:8]),
         enabled=random.choice((True, False)),
         data={random.randint(0, 1000): random.randint(0, 1000)},
@@ -305,6 +308,21 @@ def test_save_get_delete_simple(dynamo, simple_table):
 
     with pytest.raises(DoesNotExist, match=f'modeltitle123 "{data["name"]}" does not exist'):
         SimpleKeyModel.get(data["name"])
+
+
+def test_save_ttl_field_is_float(dynamo, simple_query_data):
+    """DynamoDB requires ttl fields to be a float in order to be successfully processed. Boto provides the ability to
+    set a float via a decimal (but not a float strangely)."""
+
+    key = simple_query_data[0]["name"]
+    table = SimpleKeyModel.__backend__.get_table()
+    resp = table.get_item(Key=SimpleKeyModel.__backend__._key_param_to_dict(key))
+    expires_value = resp["Item"]["expires"]
+    assert isinstance(expires_value, Decimal)
+    assert datetime.utcfromtimestamp(float(expires_value)).replace(tzinfo=timezone.utc) == simple_query_data[0]["expires"]
+
+    instance = SimpleKeyModel.get(key)
+    assert instance.expires == simple_query_data[0]["expires"]
 
 
 def test_query_with_hash_key_simple(dynamo, simple_query_data):

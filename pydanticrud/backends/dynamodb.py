@@ -1,7 +1,8 @@
 from typing import Optional, Set, Union, Dict, Any
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -70,17 +71,22 @@ DYNAMO_TYPE_MAP = {
     "bool": "BOOL",
 }
 
-EPOCH = datetime.utcfromtimestamp(0)
+EPOCH = datetime(1970, 1, 1, 0, 0)
 
 
-def _to_epoch_float(dt):
-    return (dt - EPOCH).total_seconds * 1000
+def _to_epoch_decimal(dt: datetime) -> Decimal:
+    """TTL fields must be stored as a float but boto only supports decimals."""
+    epock = EPOCH
+    if dt.tzinfo:
+        epock = epock.replace(tzinfo=timezone.utc)
+    return Decimal((dt - epock).total_seconds())
 
 
 SERIALIZE_MAP = {
     "number": str,  # float or decimal
     "string": str,
     "string:date-time": lambda d: d.isoformat(),
+    "string:ttl": lambda d: _to_epoch_decimal(d),
     "boolean": lambda d: 1 if d else 0,
     "object": json.dumps,
     "array": json.dumps,
@@ -111,9 +117,10 @@ def index_definition(index_name, keys, gsi=False):
 
 
 class DynamoSerializer:
-    def __init__(self, schema):
+    def __init__(self, schema, ttl_field=None):
         self.properties = schema["properties"]
         self.definitions = schema.get("definitions")
+        self.ttl_field = ttl_field
 
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
         field_properties = self.properties.get(field_name)
@@ -138,7 +145,11 @@ class DynamoSerializer:
         return set([(t["type"], t.get("format", "")) for t in type_dicts])
 
     def _serialize_field(self, field_name, value):
-        field_types = self._get_type_possibilities(field_name)
+        if field_name == self.ttl_field:
+            field_types = {("string", "ttl")}
+        else:
+            field_types = self._get_type_possibilities(field_name)
+
         if value is not None:
             for t in field_types:
                 try:
@@ -201,9 +212,9 @@ class Backend:
         cfg = cls.Config
         self.cls = cls
         self.schema = cls.schema()
-        self.serializer = DynamoSerializer(self.schema)
         self.hash_key = cfg.hash_key
         self.range_key = getattr(cfg, "range_key", None)
+        self.serializer = DynamoSerializer(self.schema, ttl_field=getattr(cfg, "ttl", None))
         self.table_name = cls.get_table_name()
 
         self.local_indexes = getattr(cfg, "local_indexes", {})
