@@ -383,7 +383,7 @@ class Backend:
         if isinstance(key, dict):
             try:
                 return self.query(
-                    Rule(" AND ".join(f"{k} == {repr(v)}" for k, v in key.items())), limit=1
+                    Rule(" and ".join(f"{k} == {repr(v)}" for k, v in key.items())), limit=1
                 )[0]
             except IndexError:
                 raise DoesNotExist(f'{self.table_name} "{key}" does not exist')

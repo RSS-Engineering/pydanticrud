@@ -540,6 +540,14 @@ def test_get_simple_model_data_via_index(dynamo, simple_query_data):
     assert res.dict(by_alias=True) == simple_query_data[0]
 
 
+def test_get_complex_model_data_via_index(dynamo, complex_query_data):
+    data = complex_model_data_generator()
+    res = ComplexKeyModel.get((complex_query_data[0]['account'], complex_query_data[0]['sort_date_key']))
+    assert res.dict(by_alias=True) == complex_query_data[0]
+    res = ComplexKeyModel.get({"account": complex_query_data[0]['account'], "notification_id": complex_query_data[0]['notification_id']})
+    assert res.dict(by_alias=True) == complex_query_data[0]
+
+
 def test_alias_model_validator_ingest(dynamo):
     data = alias_model_data_generator()
     AliasKeyModel(**data)
