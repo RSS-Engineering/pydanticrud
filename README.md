@@ -90,6 +90,8 @@ NOTE: Rule complexity is limited by the querying capabilities of the backend.
 
 `global_indexes` - (optional) specify a mapping of index-name to tuple(partition_key).
 
+`ttl` - (optional) the name of the datetime-typed field that dynamo should consider to be the TTL field. PydantiCRUD will save this field as a float type instead of an ISO datetime string. This field only works properly with UTC-zoned datetime instances.
+
 ### SQLite (Python 3.7+)
 
 `database` - the filename of the database file for SQLite to use

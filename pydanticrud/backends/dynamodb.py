@@ -1,7 +1,8 @@
 from typing import Optional, Set, Union, Dict, Any
 import logging
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key, Attr
@@ -45,7 +46,7 @@ def expression_to_condition(expr, keys: set):
     if isinstance(expr, ast.NullExpression):
         return None, set()
     if isinstance(expr, ast.DatetimeExpression):
-        return _to_epoch_float(expr.value), set()
+        return _to_epoch_decimal(expr.value), set()
     if isinstance(expr, ast.StringExpression):
         return expr.value, set()
     if isinstance(expr, ast.FloatExpression):
@@ -70,17 +71,22 @@ DYNAMO_TYPE_MAP = {
     "bool": "BOOL",
 }
 
-EPOCH = datetime.utcfromtimestamp(0)
+EPOCH = datetime(1970, 1, 1, 0, 0)
 
 
-def _to_epoch_float(dt):
-    return (dt - EPOCH).total_seconds * 1000
+def _to_epoch_decimal(dt: datetime) -> Decimal:
+    """TTL fields must be stored as a float but boto only supports decimals."""
+    epock = EPOCH
+    if dt.tzinfo:
+        epock = epock.replace(tzinfo=timezone.utc)
+    return Decimal((dt - epock).total_seconds())
 
 
 SERIALIZE_MAP = {
     "number": str,  # float or decimal
     "string": str,
     "string:date-time": lambda d: d.isoformat(),
+    "string:ttl": lambda d: _to_epoch_decimal(d),
     "boolean": lambda d: 1 if d else 0,
     "object": json.dumps,
     "array": json.dumps,
@@ -96,7 +102,7 @@ DESERIALIZE_MAP = {
 
 def chunk_list(lst, size):
     for i in range(0, len(lst), size):
-        yield lst[i:i + size]
+        yield lst[i : i + size]
 
 
 def index_definition(index_name, keys, gsi=False):
@@ -115,9 +121,10 @@ def index_definition(index_name, keys, gsi=False):
 
 
 class DynamoSerializer:
-    def __init__(self, schema):
+    def __init__(self, schema, ttl_field=None):
         self.properties = schema.get("properties")
         self.definitions = schema.get("definitions")
+        self.ttl_field = ttl_field
 
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
         field_properties = self.properties.get(field_name)
@@ -142,7 +149,11 @@ class DynamoSerializer:
         return set([(t["type"], t.get("format", "")) for t in type_dicts])
 
     def _serialize_field(self, field_name, value):
-        field_types = self._get_type_possibilities(field_name)
+        if field_name == self.ttl_field:
+            field_types = {("string", "ttl")}
+        else:
+            field_types = self._get_type_possibilities(field_name)
+
         if value is not None:
             for t in field_types:
                 try:
@@ -205,9 +216,9 @@ class Backend:
         cfg = cls.Config
         self.cls = cls
         self.schema = cls.schema()
-        self.serializer = DynamoSerializer(self.schema)
         self.hash_key = cfg.hash_key
         self.range_key = getattr(cfg, "range_key", None)
+        self.serializer = DynamoSerializer(self.schema, ttl_field=getattr(cfg, "ttl", None))
         self.table_name = cls.get_table_name()
 
         self.local_indexes = getattr(cfg, "local_indexes", {})
@@ -427,7 +438,9 @@ class Backend:
         # chunk list for size limit of 25 items to write using this batch_write operation refer below.
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html#:~:text=The%20BatchWriteItem%20operation,Data%20Types.
         for chunk in chunk_list(items, 25):
-            serialized_items = [self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk]
+            serialized_items = [
+                self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk
+            ]
             for serialized_item in serialized_items:
                 request_items[self.table_name].append({"PutRequest": {"Item": serialized_item}})
         try:
