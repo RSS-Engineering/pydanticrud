@@ -474,6 +474,13 @@ def test_pagination_query_with_index_complex(dynamo, complex_query_data):
     assert all([r in check_data for r in res])
     assert len(res) == page_size
 
+def test_pagination_query_count(dynamo, complex_query_data):
+    page_size = 2
+    middle_record = complex_query_data[(len(complex_query_data)//2)]
+    query_rule = Rule(f"account == '{middle_record['account']}' and category_id >= {middle_record['category_id']}")
+    check_data = ComplexKeyModel.query(query_rule)
+    res_count = ComplexKeyModel.count(query_rule)
+    assert res_count == check_data.scanned_count
 
 def test_query_errors_with_nonprimary_key_complex(dynamo, complex_query_data):
     data_by_expires = complex_query_data[:]

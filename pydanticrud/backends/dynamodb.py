@@ -321,6 +321,7 @@ class Backend:
         limit: Optional[int] = None,
         exclusive_start_key: Optional[str] = None,
         order: str = "asc",
+        select: Optional[str] = None,
     ):
         table = self.get_table()
         f_expr, _ = rule_to_boto_expression(filter_expr) if filter_expr else (None, set())
@@ -347,6 +348,9 @@ class Backend:
 
             if order != "asc":
                 params["ScanIndexForward"] = False
+
+            if select:
+                params["Select"] = select
 
             if index_name:
                 params["IndexName"] = index_name
@@ -376,8 +380,28 @@ class Backend:
                 raise e
 
         return DynamoIterableResult(
-            self.cls, resp, (self.serializer.deserialize_record(rec) for rec in resp["Items"])
+            self.cls,
+            resp,
+            (self.serializer.deserialize_record(rec) for rec in resp.get("Items", [])),
         )
+
+    def count(
+        self,
+        query_expr: Optional[Rule] = None,
+        exclusive_start_key: Optional[str] = None,
+        order: str = "asc",
+    ) -> int:
+        """
+        Dynamo Query returns a full "scanned_count" but when a limit is specified this count is <= the limit. To
+        get a full count (i.e. for pagination), a limitless query must be run.
+        """
+        result = self.query(
+            query_expr=query_expr,
+            exclusive_start_key=exclusive_start_key,
+            order=order,
+            select="COUNT",
+        )
+        return result.scanned_count
 
     def get(self, key: Union[Dict, Any]):
         if isinstance(key, dict):

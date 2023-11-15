@@ -72,6 +72,10 @@ NOTE: Rule complexity is limited by the querying capabilities of the backend.
   - Providing a `limit` parameter will limit the number of results. If more results remain, the returned dataset will have an `last_evaluated_key` property that can be passed to `exclusive_start_key` to continue with the next page.
   - Providing `order='desc'` will return the result set in descending order. This is not available for query calls that "scan" dynamodb.
 
+`count(query_expr: Optional[Rule], exclusive_start_key: Optional[tuple[Any]], order: str = 'asc'`
+  - Same as `query` but returns an integer count as total. (When calling `query` with a limit, the count dynamodb returns is <= the limit you provide)
+
+
 ## Backend Configuration Members
 
 `hash_key` - the name of the key field for the backend table

@@ -60,6 +60,10 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
         return res
 
     @classmethod
+    def count(cls, *args, **kwargs):
+        return cls.__backend__.count(*args, **kwargs)
+
+    @classmethod
     def get(cls, *args, **kwargs):
         return cls.parse_obj(cls.__backend__.get(*args, **kwargs))
 
