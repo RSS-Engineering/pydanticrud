@@ -6,7 +6,7 @@ import random
 
 import docker
 from botocore.exceptions import ClientError
-from pydantic import BaseModel as PydanticBaseModel, Field, root_validator, ValidationError
+from pydantic import model_validator, ConfigDict, BaseModel as PydanticBaseModel, Field, ValidationError
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist
@@ -33,14 +33,7 @@ class SimpleKeyModel(BaseModel):
     data: Dict[int, int] = None
     items: List[int]
     hash: UUID
-
-    class Config:
-        title = "ModelTitle123"
-        hash_key = "name"
-        ttl = "expires"
-        backend = DynamoDbBackend
-        endpoint = "http://localhost:18002"
-        global_indexes = {"by-id": ("id",)}
+    model_config = ConfigDict(title="ModelTitle123", hash_key="name", ttl="expires", backend=DynamoDbBackend, endpoint="http://localhost:18002", global_indexes={"by-id": ("id",)})
 
 
 class AliasKeyModel(BaseModel):
@@ -49,17 +42,13 @@ class AliasKeyModel(BaseModel):
     name: str
     type_: str = Field(alias="type")
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def type_from_typ(cls, values):
         if 'typ' in values:
             values['type'] = values.pop('typ')
         return values
-
-    class Config:
-        title = "AliasTitle123"
-        hash_key = "name"
-        backend = DynamoDbBackend
-        endpoint = "http://localhost:18002"
+    model_config = ConfigDict(title="AliasTitle123", hash_key="name", backend=DynamoDbBackend, endpoint="http://localhost:18002")
 
 
 class ComplexKeyModel(BaseModel):
@@ -70,18 +59,11 @@ class ComplexKeyModel(BaseModel):
     notification_id: str
     thread_id: str
     body: str = "some random string"
-
-    class Config:
-        title = "ComplexModelTitle123"
-        hash_key = "account"
-        range_key = "sort_date_key"
-        backend = DynamoDbBackend
-        endpoint = "http://localhost:18002"
-        local_indexes = {
-            "by-category": ("account", "category_id"),
-            "by-notification": ("account", "notification_id"),
-            "by-thread": ("account", "thread_id")
-        }
+    model_config = ConfigDict(title="ComplexModelTitle123", hash_key="account", range_key="sort_date_key", backend=DynamoDbBackend, endpoint="http://localhost:18002", local_indexes={
+        "by-category": ("account", "category_id"),
+        "by-notification": ("account", "notification_id"),
+        "by-thread": ("account", "thread_id")
+    })
 
 
 class Ticket(PydanticBaseModel):
@@ -100,13 +82,7 @@ class NestedModel(BaseModel):
     expires: str
     ticket: Optional[Ticket]
     other: Union[Ticket, SomethingElse]
-
-    class Config:
-        title = "NestedModelTitle123"
-        hash_key = "account"
-        range_key = "sort_date_key"
-        backend = DynamoDbBackend
-        endpoint = "http://localhost:18002"
+    model_config = ConfigDict(title="NestedModelTitle123", hash_key="account", range_key="sort_date_key", backend=DynamoDbBackend, endpoint="http://localhost:18002")
 
 
 def alias_model_data_generator(**kwargs):

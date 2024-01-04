@@ -6,6 +6,7 @@ import pytest
 
 from pydanticrud import BaseModel, SqliteBackend
 from rule_engine import Rule
+from pydantic import ConfigDict
 
 
 class Model(BaseModel):
@@ -18,12 +19,7 @@ class Model(BaseModel):
     enabled: bool
     data: Dict[str, str]
     items: List[int]
-
-    class Config:
-        title = "ModelTitle123"
-        hash_key = "id"
-        backend = SqliteBackend
-        database = ":memory:"
+    model_config = ConfigDict(title="ModelTitle123", hash_key="id", backend=SqliteBackend, database=":memory:")
 
 
 @pytest.fixture()

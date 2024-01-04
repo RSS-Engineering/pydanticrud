@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 from pydanticrud import BaseModel
+from pydantic import ConfigDict
 
 
 class FalseBackend:
@@ -20,10 +21,7 @@ class Model(BaseModel):
     id: int
     name: str
     total: float
-
-    class Config:
-        title = "ModelTitle123"
-        backend = FalseBackend
+    model_config = ConfigDict(title="ModelTitle123", backend=FalseBackend)
 
 
 def test_model_has_backend_methods():
