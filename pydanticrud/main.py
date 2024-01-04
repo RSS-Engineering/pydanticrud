@@ -1,14 +1,12 @@
-import pydantic.error_wrappers
 from pydantic import BaseModel as PydanticBaseModel
-from pydantic.main import ModelMetaclass
-from rule_engine import Rule
+from pydantic._internal._model_construction import ModelMetaclass
 
 
 class CrudMetaClass(ModelMetaclass):
     def __new__(mcs, name, bases, namespace, **kwargs):
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-        if hasattr(cls.__config__, "backend"):
-            cls.__backend__ = cls.__config__.backend(cls)
+        # if hasattr(cls.__config__, "backend"):
+        #     cls.__backend__ = cls.__config__.backend(cls)
 
         return cls
 
@@ -42,7 +40,7 @@ class IterableResult:
 class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
     @classmethod
     def initialize(cls):
-        return cls.__backend__.initialize()
+        return cls.initialize()
 
     @classmethod
     def get_table_name(cls) -> str:
