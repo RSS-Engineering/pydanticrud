@@ -207,6 +207,7 @@ def simple_query_data(simple_table):
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
     del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
+        print(datum)
         SimpleKeyModel.model_validate(datum).save()
     try:
         yield data
