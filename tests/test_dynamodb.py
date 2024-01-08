@@ -207,8 +207,6 @@ def simple_query_data(simple_table):
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
     # del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
-        print("I'm here")
-        print(datum)
         SimpleKeyModel.model_validate(datum).save()
     try:
         yield data
@@ -254,7 +252,7 @@ def nested_query_data(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(**i) for i in presets]]
     for datum in data:
-        nested_datum = NestedModel.parse_obj(datum)
+        nested_datum = NestedModel.model_validate(datum)
         nested_datum.save()
     try:
         yield data
@@ -278,11 +276,11 @@ def nested_query_data_empty_ticket(nested_table):
 
 def test_save_get_delete_simple(dynamo, simple_table):
     data = simple_model_data_generator()
-    a = SimpleKeyModel.parse_obj(data)
+    a = SimpleKeyModel.model_validate(data)
     a.save()
     try:
         b = SimpleKeyModel.get(data["name"])
-        assert b.dict() == a.dict()
+        assert b.dict() == a.model_dump()
     finally:
         SimpleKeyModel.delete(data["name"])
 
@@ -361,11 +359,11 @@ def test_query_scan_contains_simple(dynamo, simple_query_data):
 
 def test_save_get_delete_complex(dynamo, complex_table):
     data = complex_model_data_generator()
-    a = ComplexKeyModel.parse_obj(data)
+    a = ComplexKeyModel.model_validate(data)
     a.save()
     try:
         b = ComplexKeyModel.get((data["account"], data["sort_date_key"]))
-        assert b.dict() == a.dict()
+        assert b.dict() == a.model_dump()
     finally:
         ComplexKeyModel.delete((data["account"], data["sort_date_key"]))
 
@@ -545,7 +543,7 @@ def test_alias_model_validator_ingest(dynamo):
 
 def test_batch_write(dynamo, complex_table):
     response = {"UnprocessedItems": {}}
-    data = [ComplexKeyModel.parse_obj(complex_model_data_generator()) for x in range(0, 10)]
+    data = [ComplexKeyModel.model_validate(complex_model_data_generator()) for x in range(0, 10)]
     un_proc = ComplexKeyModel.batch_save(data)
     assert un_proc == response["UnprocessedItems"]
     res_get = ComplexKeyModel.get((data[0].account, data[0].sort_date_key))
@@ -559,7 +557,7 @@ def test_batch_write(dynamo, complex_table):
 
 def test_message_batch_write_client_exception(dynamo, complex_table):
     data = [
-        ComplexKeyModel.parse_obj(complex_model_data_generator(body="some big string" * 10000))
+        ComplexKeyModel.model_validate(complex_model_data_generator(body="some big string" * 10000))
         for x in range(0, 2)
     ]
     with pytest.raises(ClientError) as exc:
