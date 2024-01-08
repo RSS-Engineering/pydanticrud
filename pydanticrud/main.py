@@ -39,7 +39,7 @@ class IterableResult:
 class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
     @classmethod
     def initialize(cls):
-        return cls.initialize()
+        return cls.__backend__.initialize()
 
     @classmethod
     def get_table_name(cls) -> str:
