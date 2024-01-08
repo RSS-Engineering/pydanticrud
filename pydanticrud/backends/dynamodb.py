@@ -213,16 +213,16 @@ class DynamoIterableResult(IterableResult):
 
 class Backend:
     def __init__(self, cls):
-        cfg = cls.Config
+        cfg = cls.model_config
         self.cls = cls
         self.schema = cls.schema()
-        self.hash_key = cfg.hash_key
-        self.range_key = getattr(cfg, "range_key", None)
-        self.serializer = DynamoSerializer(self.schema, ttl_field=getattr(cfg, "ttl", None))
+        self.hash_key = cfg.get("hash_key")
+        self.range_key = cfg.get("range_key")
+        self.serializer = DynamoSerializer(self.schema, ttl_field=cfg.get("ttl"))
         self.table_name = cls.get_table_name()
 
-        self.local_indexes = getattr(cfg, "local_indexes", {})
-        self.global_indexes = getattr(cfg, "global_indexes", {})
+        self.local_indexes = cfg.get("local_indexes", {})
+        self.global_indexes = cfg.get("global_indexes", {})
         self.index_map = {(self.hash_key,): None}
         self.possible_keys = {self.hash_key}
         if self.range_key:
@@ -236,8 +236,8 @@ class Backend:
 
         self.dynamodb = boto3.resource(
             "dynamodb",
-            region_name=getattr(cfg, "region", "us-east-2"),
-            endpoint_url=getattr(cfg, "endpoint", None),
+            region_name=cfg.get("region", "us-east-2"),
+            endpoint_url=cfg.get("endpoint"),
         )
 
     def _key_param_to_dict(self, key):

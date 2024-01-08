@@ -45,8 +45,8 @@ def get_column_data(field_type):
 
 class Backend:
     def __init__(self, cls):
-        cfg = cls.Config
-        self.hash_key = cfg.hash_key
+        cfg = cls.model_config
+        self.hash_key = cfg.get("hash_key")
         self.table_name = cls.get_table_name()
 
         type_hints = get_type_hints(cls)
