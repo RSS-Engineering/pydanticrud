@@ -64,7 +64,7 @@ class Backend:
             register_adapter(python_type, adapter)
             register_converter(python_type.__name__, converter)
 
-        self._conn = connect(cfg.database, detect_types=PARSE_DECLTYPES)
+        self._conn = connect(cfg.get("database"), detect_types=PARSE_DECLTYPES)
 
     def _deserialize_record(self, res_tuple) -> dict:
         """
