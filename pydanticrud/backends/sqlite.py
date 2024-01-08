@@ -162,8 +162,8 @@ class Backend:
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         table_name = item.get_table_name()
-        hash_key = item.Config.hash_key
-        key = getattr(item, hash_key)
+        hash_key = item.model_config.get("hash_key")
+        key = item.model_config.get("hash_key")
         fields = tuple(self._columns.keys())
 
         item_data = item.dict()
