@@ -238,7 +238,7 @@ class Backend:
         self.dynamodb = boto3.resource(
             "dynamodb",
             region_name=cfg.get("region", "us-east-2"),
-            endpoint_url="http://localhost:8000/"#cfg.get("endpoint"),
+            endpoint_url=cfg.get("endpoint"),
         )
 
     def _key_param_to_dict(self, key):
