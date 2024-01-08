@@ -306,7 +306,7 @@ def test_save_ttl_field_is_float(dynamo, simple_query_data):
 def test_query_with_hash_key_simple(dynamo, simple_query_data):
     res = SimpleKeyModel.query(Rule(f"name == '{simple_query_data[0]['name']}'"))
     res_data = {m.name: m.dict() for m in res}
-    simple_query_data[0]["data"] = None  # This is a default value and should be populated as such
+    simple_query_data[0]["data"] = {}  # This is a default value and should be populated as such
     assert res_data == {simple_query_data[0]["name"]: simple_query_data[0]}
 
 
