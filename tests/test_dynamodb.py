@@ -207,7 +207,7 @@ def simple_query_data(simple_table):
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
     del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
-        SimpleKeyModel.parse_obj(datum).save()
+        SimpleKeyModel.model_validate(datum).save()
     try:
         yield data
     finally:
@@ -226,7 +226,7 @@ def complex_query_data(complex_table):
         for i, p in enumerate(presets)
     ]
     for datum in data:
-        ComplexKeyModel.parse_obj(datum).save()
+        ComplexKeyModel.model_validate(datum).save()
     try:
         yield data
     finally:
@@ -266,7 +266,7 @@ def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
     for datum in data:
-        NestedModel.parse_obj(datum).save()
+        NestedModel.model_validate(datum).save()
     try:
         yield data
     finally:
