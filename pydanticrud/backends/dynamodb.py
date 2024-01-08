@@ -144,7 +144,7 @@ class DynamoSerializer:
             if isinstance(definition_signature, str):
                 print("Inside condition")
                 t = definition_signature.split("/")[-1]
-                return self.definitions.get(t)
+                return self.definitions[t]
             return definition_signature
 
         type_dicts = [type_from_definition(t) for t in possible_types]
