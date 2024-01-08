@@ -65,8 +65,8 @@ def test_initialize_creates_table():
 
 def test_save_and_get(model_in_db):
     data = model_data_generator()
-    a = Model.parse_obj(data)
-    assert a.dict() == data
+    a = Model.model_validate(data)
+    assert a.model_dump() == data
     a.save()
     b = Model.get(data["id"])
     assert b.dict() == data
