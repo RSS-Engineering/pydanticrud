@@ -205,7 +205,7 @@ def alias_table(dynamo):
 def simple_query_data(simple_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
-    # del data[0]["data"]  # We need to have no data to ensure that default values work
+    del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
         SimpleKeyModel.model_validate(datum).save()
     try:
