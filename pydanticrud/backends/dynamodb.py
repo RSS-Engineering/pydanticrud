@@ -146,7 +146,8 @@ class DynamoSerializer:
                 t = definition_signature.split("/")[-1]
                 return self.definitions[t]
             return definition_signature
-
+        print("Possible Types")
+        print(possible_types)
         type_dicts = [type_from_definition(t) for t in possible_types]
 
         return set([(t["type"], t.get("format", "")) for t in type_dicts])
