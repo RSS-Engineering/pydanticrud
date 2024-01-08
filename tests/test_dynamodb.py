@@ -30,7 +30,7 @@ class SimpleKeyModel(BaseModel):
     expires: datetime
     sigfig: Decimal
     enabled: bool
-    data: Dict[int, int] = None
+    data: Dict[int, int] = {}
     items: List[int]
     hash: UUID
     model_config = ConfigDict(title="ModelTitle123", hash_key="name", ttl="expires", backend=DynamoDbBackend, endpoint="http://localhost:18002", global_indexes={"by-id": ("id",)})
@@ -205,7 +205,7 @@ def alias_table(dynamo):
 def simple_query_data(simple_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
-    # del data[0]["data"]  # We need to have no data to ensure that default values work
+    del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
         print("I'm here")
         print(datum)
