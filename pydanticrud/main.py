@@ -62,11 +62,11 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
 
     @classmethod
     def get(cls, *args, **kwargs):
-        return cls.parse_obj(cls.__backend__.get(*args, **kwargs))
+        return cls.model_validate(cls.__backend__.get(*args, **kwargs))
 
     def save(self) -> bool:
         # Parse the new obj to trigger validation
-        self.__class__.parse_obj(self.dict(by_alias=True))
+        self.__class__.model_validate(self.model_dump(by_alias=True))
 
         # Maybe we should pass a conditional to the backend but for now the only place that uses it doesn't need it.
         return self.__class__.__backend__.save(self)
