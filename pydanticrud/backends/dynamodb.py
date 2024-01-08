@@ -141,7 +141,7 @@ class DynamoSerializer:
         def type_from_definition(definition_signature: Union[str, dict]) -> dict:
             if isinstance(definition_signature, str):
                 t = definition_signature.split("/")[-1]
-                return self.definitions[t]
+                return self.definitions.get(t)
             return definition_signature
 
         type_dicts = [type_from_definition(t) for t in possible_types]
@@ -237,7 +237,7 @@ class Backend:
         self.dynamodb = boto3.resource(
             "dynamodb",
             region_name=cfg.get("region", "us-east-2"),
-            endpoint_url=cfg.get("endpoint"),
+            endpoint_url="http://localhost:8000/"#cfg.get("endpoint"),
         )
 
     def _key_param_to_dict(self, key):
