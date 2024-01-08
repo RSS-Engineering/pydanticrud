@@ -30,7 +30,7 @@ class SimpleKeyModel(BaseModel):
     expires: datetime
     sigfig: Decimal
     enabled: bool
-    data: Dict[int, int] = None
+    data: Dict[int, int] = {}
     items: List[int]
     hash: UUID
     model_config = ConfigDict(title="ModelTitle123", hash_key="name", ttl="expires", backend=DynamoDbBackend, endpoint="http://localhost:18002", global_indexes={"by-id": ("id",)})
