@@ -232,7 +232,7 @@ def complex_query_data(complex_table):
         yield data
     finally:
         for datum in data:
-            ComplexKeyModel.delete((datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key]))
+            ComplexKeyModel.delete((datum[ComplexKeyModel.model_config.get("hash_key")], datum[ComplexKeyModel.model_config.get("range_key")]))
 
 
 @pytest.fixture(scope="module")
@@ -240,7 +240,7 @@ def alias_query_data(alias_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [alias_model_data_generator(**i) for i in presets]]
     for datum in data:
-        AliasKeyModel.parse_obj(datum).save()
+        AliasKeyModel.model_validate(datum).save()
     try:
         yield data
     finally:
@@ -505,7 +505,7 @@ def test_query_alias_save(dynamo):
     AliasKeyModel.initialize()
     try:
         for datum in data:
-            AliasKeyModel.parse_obj(datum).save()
+            AliasKeyModel.model_validate(datum).save()
     except Exception as e:
         raise pytest.fail("Failed to save Alias model!")
 
