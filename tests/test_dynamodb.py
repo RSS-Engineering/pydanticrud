@@ -258,7 +258,7 @@ def nested_query_data(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
+            NestedModel.delete((datum[NestedModel.model_config.get("hash_key")], datum[NestedModel.model_config.get("range_key")]))
 
 
 @pytest.fixture
@@ -271,7 +271,7 @@ def nested_query_data_empty_ticket(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
+            NestedModel.delete((datum[NestedModel.model_config.get("hash_key")], datum[NestedModel.model_config.get("range_key")]))
 
 
 def test_save_get_delete_simple(dynamo, simple_table):

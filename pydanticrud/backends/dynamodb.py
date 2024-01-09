@@ -102,7 +102,7 @@ DESERIALIZE_MAP = {
 
 def chunk_list(lst, size):
     for i in range(0, len(lst), size):
-        yield lst[i : i + size]
+        yield lst[i: i + size]
 
 
 def index_definition(index_name, keys, gsi=False):
@@ -123,7 +123,7 @@ def index_definition(index_name, keys, gsi=False):
 class DynamoSerializer:
     def __init__(self, schema, ttl_field=None):
         self.properties = schema.get("properties")
-        self.definitions = schema.get("definitions")
+        self.definitions = schema.get("$defs")
         self.ttl_field = ttl_field
 
     def _get_type_possibilities(self, field_name) -> Set[tuple]:
