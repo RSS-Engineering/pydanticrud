@@ -139,15 +139,10 @@ class DynamoSerializer:
             possible_types.append(field_properties.get("$ref", field_properties))
 
         def type_from_definition(definition_signature: Union[str, dict]) -> dict:
-            print("Definition Signature")
-            print(definition_signature)
             if isinstance(definition_signature, str):
-                print("Inside condition")
                 t = definition_signature.split("/")[-1]
                 return self.definitions[t]
             return definition_signature
-        print("Possible Types")
-        print(possible_types)
         type_dicts = [type_from_definition(t) for t in possible_types]
 
         return set([(t["type"], t.get("format", "")) for t in type_dicts])
