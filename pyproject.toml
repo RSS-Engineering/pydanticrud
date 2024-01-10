@@ -6,7 +6,7 @@ authors = ["Timothy Farrell <tim.farrell@rackspace.com>"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = ">=3.7"
+python = ">=3.8"
 boto3 = "^1.17.112"
 rule-engine = "^3.2.0"
 pydantic = "^2.5"
