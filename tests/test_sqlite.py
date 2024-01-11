@@ -19,7 +19,7 @@ class Model(BaseModel):
     enabled: bool
     data: Dict[str, str]
     items: List[int]
-    model_config = ConfigDict(title="ModelTitle123", hash_key="id", backend=SqliteBackend, database=":memory:")
+    db_config = ConfigDict(title="ModelTitle123", hash_key="id", backend=SqliteBackend, database=":memory:")
 
 
 @pytest.fixture()

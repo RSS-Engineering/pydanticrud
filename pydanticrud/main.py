@@ -5,8 +5,8 @@ from pydantic._internal._model_construction import ModelMetaclass
 class CrudMetaClass(ModelMetaclass):
     def __new__(mcs, name, bases, namespace, **kwargs):
         cls = super().__new__(mcs, name, bases, namespace, **kwargs)
-        if hasattr(cls, "model_config") and "backend" in cls.model_config:
-            cls.__backend__ = cls.model_config["backend"](cls)
+        if hasattr(cls, "db_config") and "backend" in cls.db_config:
+            cls.__backend__ = cls.db_config["backend"](cls)
         return cls
 
 
@@ -43,7 +43,7 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
 
     @classmethod
     def get_table_name(cls) -> str:
-        return cls.model_config.get("title").lower()
+        return cls.db_config.get("title").lower()
 
     @classmethod
     def exists(cls) -> bool:
