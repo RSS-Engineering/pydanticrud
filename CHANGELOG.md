@@ -20,9 +20,6 @@ Added support for Pydantic V2 (version - ^2.5).
 - Renamed backend initialization class from `Config` to `db_config` to follow pydantic's naming convention.
 - Updated method for generation of dictionary from `dict` to `model_dump`.
 
-### Fixed
-
-
 ## [0.4.2] - 2023-11-16
  
 Added count() for dynamo backend that returns integer count as total.
