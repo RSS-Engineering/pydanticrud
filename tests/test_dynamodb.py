@@ -6,7 +6,7 @@ import random
 
 import docker
 from botocore.exceptions import ClientError
-from pydantic import model_validator, ConfigDict, BaseModel as PydanticBaseModel, Field, ValidationError
+from pydantic import model_validator, BaseModel as PydanticBaseModel, Field, ValidationError
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist

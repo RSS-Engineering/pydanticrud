@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 from pydanticrud import BaseModel
-from pydantic import ConfigDict
 
 
 class FalseBackend:

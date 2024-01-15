@@ -6,7 +6,6 @@ import pytest
 
 from pydanticrud import BaseModel, SqliteBackend
 from rule_engine import Rule
-from pydantic import ConfigDict
 
 
 class Model(BaseModel):
