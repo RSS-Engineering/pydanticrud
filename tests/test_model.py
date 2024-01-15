@@ -21,7 +21,10 @@ class Model(BaseModel):
     id: int
     name: str
     total: float
-    db_config: dict = ConfigDict(title="ModelTitle123", backend=FalseBackend)
+
+    class DBConfig:
+        title = "ModelTitle123"
+        backend = FalseBackend
 
 
 def test_model_has_backend_methods():
@@ -55,4 +58,4 @@ def test_model_backend_query():
 
 
 def test_model_table_name_from_title():
-    assert Model.get_table_name() == Model.db_config.get("title").lower()
+    assert Model.get_table_name() == Model.DBConfig.title.lower()
