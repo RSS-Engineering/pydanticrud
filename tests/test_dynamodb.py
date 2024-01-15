@@ -34,7 +34,7 @@ class SimpleKeyModel(BaseModel):
     items: List[int]
     hash: UUID
 
-    class DBConfig:
+    class db_config:
         title = "ModelTitle123"
         hash_key = "name"
         ttl = "expires"
@@ -56,7 +56,7 @@ class AliasKeyModel(BaseModel):
             values['type'] = values.pop('typ')
         return values
 
-    class DBConfig:
+    class db_config:
         title = "AliasTitle123"
         hash_key = "name"
         backend = DynamoDbBackend
@@ -72,7 +72,7 @@ class ComplexKeyModel(BaseModel):
     thread_id: str
     body: str = "some random string"
 
-    class DBConfig:
+    class db_config:
         title = "ComplexModelTitle123"
         hash_key = "account"
         range_key = "sort_date_key"
@@ -102,7 +102,7 @@ class NestedModel(BaseModel):
     ticket: Optional[Ticket]
     other: Union[Ticket, SomethingElse]
 
-    class DBConfig:
+    class db_config:
         title = "NestedModelTitle123"
         hash_key = "account"
         range_key = "sort_date_key"
@@ -255,7 +255,7 @@ def complex_query_data(complex_table):
         yield data
     finally:
         for datum in data:
-            ComplexKeyModel.delete((datum[ComplexKeyModel.DBConfig.hash_key], datum[getattr(ComplexKeyModel.DBConfig, "range_key")]))
+            ComplexKeyModel.delete((datum[ComplexKeyModel.db_config.hash_key], datum[getattr(ComplexKeyModel.db_config, "range_key")]))
 
 
 @pytest.fixture(scope="module")
@@ -282,7 +282,7 @@ def nested_query_data(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.DBConfig.hash_key], datum[NestedModel.DBConfig.range_key]))
+            NestedModel.delete((datum[NestedModel.db_config.hash_key], datum[NestedModel.db_config.range_key]))
 
 
 @pytest.fixture
@@ -295,7 +295,7 @@ def nested_query_data_empty_ticket(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.DBConfig.hash_key], datum[NestedModel.DBConfig.range_key]))
+            NestedModel.delete((datum[NestedModel.db_config.hash_key], datum[NestedModel.db_config.range_key]))
 
 
 def test_save_get_delete_simple(dynamo, simple_table):

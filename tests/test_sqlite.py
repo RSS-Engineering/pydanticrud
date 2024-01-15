@@ -20,7 +20,7 @@ class Model(BaseModel):
     data: Dict[str, str]
     items: List[int]
 
-    class DBConfig:
+    class db_config:
         title = "ModelTitle123"
         hash_key = "id"
         backend = SqliteBackend

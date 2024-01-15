@@ -45,7 +45,7 @@ def get_column_data(field_type):
 
 class Backend:
     def __init__(self, cls):
-        cfg = cls.DBConfig
+        cfg = cls.db_config
         self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
 
@@ -162,8 +162,8 @@ class Backend:
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         table_name = item.get_table_name()
-        hash_key = item.DBConfig.hash_key
-        key = item.DBConfig.hash_key
+        hash_key = item.db_config.hash_key
+        key = item.db_config.hash_key
         fields = tuple(self._columns.keys())
 
         item_data = item.dict()

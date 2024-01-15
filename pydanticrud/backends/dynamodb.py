@@ -212,7 +212,7 @@ class DynamoIterableResult(IterableResult):
 
 class Backend:
     def __init__(self, cls):
-        cfg = cls.DBConfig
+        cfg = cls.db_config
         self.cls = cls
         self.schema = cls.schema()
         self.hash_key = cfg.hash_key
