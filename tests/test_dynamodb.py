@@ -33,7 +33,14 @@ class SimpleKeyModel(BaseModel):
     data: Dict[int, int] = {}
     items: List[int]
     hash: UUID
-    db_config = ConfigDict(title="ModelTitle123", hash_key="name", ttl="expires", backend=DynamoDbBackend, endpoint="http://localhost:18002", global_indexes={"by-id": ("id",)})
+
+    class DBConfig:
+        title = "ModelTitle123"
+        hash_key = "name"
+        ttl = "expires"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
+        global_indexes = {"by-id": ("id",)}
 
 
 class AliasKeyModel(BaseModel):
@@ -48,7 +55,12 @@ class AliasKeyModel(BaseModel):
         if 'typ' in values:
             values['type'] = values.pop('typ')
         return values
-    db_config = ConfigDict(title="AliasTitle123", hash_key="name", backend=DynamoDbBackend, endpoint="http://localhost:18002")
+
+    class DBConfig:
+        title = "AliasTitle123"
+        hash_key = "name"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
 
 
 class ComplexKeyModel(BaseModel):
@@ -59,11 +71,18 @@ class ComplexKeyModel(BaseModel):
     notification_id: str
     thread_id: str
     body: str = "some random string"
-    db_config = ConfigDict(title="ComplexModelTitle123", hash_key="account", range_key="sort_date_key", backend=DynamoDbBackend, endpoint="http://localhost:18002", local_indexes={
-        "by-category": ("account", "category_id"),
-        "by-notification": ("account", "notification_id"),
-        "by-thread": ("account", "thread_id")
-    })
+
+    class DBConfig:
+        title = "ComplexModelTitle123"
+        hash_key = "account"
+        range_key = "sort_date_key"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
+        local_indexes = {
+            "by-category": ("account", "category_id"),
+            "by-notification": ("account", "notification_id"),
+            "by-thread": ("account", "thread_id")
+        }
 
 
 class Ticket(PydanticBaseModel):
@@ -82,8 +101,13 @@ class NestedModel(BaseModel):
     expires: str
     ticket: Optional[Ticket]
     other: Union[Ticket, SomethingElse]
-    db_config = ConfigDict(title="NestedModelTitle123", hash_key="account", range_key="sort_date_key", backend=DynamoDbBackend, endpoint="http://localhost:18002")
 
+    class DBConfig:
+        title = "NestedModelTitle123"
+        hash_key = "account"
+        range_key = "sort_date_key"
+        backend = DynamoDbBackend
+        endpoint = "http://localhost:18002"
 
 def alias_model_data_generator(**kwargs):
     data = dict(
@@ -231,7 +255,7 @@ def complex_query_data(complex_table):
         yield data
     finally:
         for datum in data:
-            ComplexKeyModel.delete((datum[ComplexKeyModel.db_config.get("hash_key")], datum[ComplexKeyModel.db_config.get("range_key")]))
+            ComplexKeyModel.delete((datum[ComplexKeyModel.DBConfig.hash_key], datum[getattr(ComplexKeyModel.DBConfig, "range_key")]))
 
 
 @pytest.fixture(scope="module")
@@ -258,7 +282,7 @@ def nested_query_data(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.db_config.get("hash_key")], datum[NestedModel.db_config.get("range_key")]))
+            NestedModel.delete((datum[NestedModel.DBConfig.hash_key], datum[NestedModel.DBConfig.range_key]))
 
 
 @pytest.fixture
@@ -271,7 +295,7 @@ def nested_query_data_empty_ticket(nested_table):
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.db_config.get("hash_key")], datum[NestedModel.db_config.get("range_key")]))
+            NestedModel.delete((datum[NestedModel.DBConfig.hash_key], datum[NestedModel.DBConfig.range_key]))
 
 
 def test_save_get_delete_simple(dynamo, simple_table):

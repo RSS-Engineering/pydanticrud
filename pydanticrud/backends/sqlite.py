@@ -45,8 +45,8 @@ def get_column_data(field_type):
 
 class Backend:
     def __init__(self, cls):
-        cfg = cls.db_config
-        self.hash_key = cfg.get("hash_key")
+        cfg = cls.DBConfig
+        self.hash_key = cfg.hash_key
         self.table_name = cls.get_table_name()
 
         type_hints = get_type_hints(cls)
@@ -64,7 +64,7 @@ class Backend:
             register_adapter(python_type, adapter)
             register_converter(python_type.__name__, converter)
 
-        self._conn = connect(cfg.get("database"), detect_types=PARSE_DECLTYPES)
+        self._conn = connect(cfg.database, detect_types=PARSE_DECLTYPES)
 
     def _deserialize_record(self, res_tuple) -> dict:
         """
@@ -162,8 +162,8 @@ class Backend:
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
         table_name = item.get_table_name()
-        hash_key = item.db_config.get("hash_key")
-        key = item.db_config.get("hash_key")
+        hash_key = item.DBConfig.hash_key
+        key = item.DBConfig.hash_key
         fields = tuple(self._columns.keys())
 
         item_data = item.dict()

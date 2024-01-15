@@ -21,7 +21,7 @@ class Model(BaseModel):
     id: int
     name: str
     total: float
-    db_config = ConfigDict(title="ModelTitle123", backend=FalseBackend)
+    db_config: dict = ConfigDict(title="ModelTitle123", backend=FalseBackend)
 
 
 def test_model_has_backend_methods():
