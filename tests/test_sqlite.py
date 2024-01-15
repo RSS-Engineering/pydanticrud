@@ -19,7 +19,7 @@ class Model(BaseModel):
     data: Dict[str, str]
     items: List[int]
 
-    class Config:
+    class db_config:
         title = "ModelTitle123"
         hash_key = "id"
         backend = SqliteBackend
@@ -69,8 +69,8 @@ def test_initialize_creates_table():
 
 def test_save_and_get(model_in_db):
     data = model_data_generator()
-    a = Model.parse_obj(data)
-    assert a.dict() == data
+    a = Model.model_validate(data)
+    assert a.model_dump() == data
     a.save()
     b = Model.get(data["id"])
     assert b.dict() == data
@@ -108,13 +108,13 @@ def test_query(model_in_db):
     data2["id"] = 2
     data3 = model_data_generator()
     data3["id"] = 1234
-    Model.parse_obj(data1).save()
-    Model.parse_obj(data2).save()
-    Model.parse_obj(data3).save()
+    Model.model_validate(data1).save()
+    Model.model_validate(data2).save()
+    Model.model_validate(data3).save()
     for r in range(0, 10):
         _data = model_data_generator()
         _data["id"] += 3
-        Model.parse_obj(_data).save()
+        Model.model_validate(_data).save()
     res = Model.query(Rule(f"id < 3"))
     data = {m.id: m.dict() for m in res}
     assert data == {1: data1, 2: data2}

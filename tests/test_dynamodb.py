@@ -6,7 +6,7 @@ import random
 
 import docker
 from botocore.exceptions import ClientError
-from pydantic import BaseModel as PydanticBaseModel, Field, root_validator, ValidationError
+from pydantic import model_validator, BaseModel as PydanticBaseModel, Field, ValidationError
 from pydanticrud import BaseModel, DynamoDbBackend, ConditionCheckFailed
 import pytest
 from pydanticrud.exceptions import DoesNotExist
@@ -30,11 +30,11 @@ class SimpleKeyModel(BaseModel):
     expires: datetime
     sigfig: Decimal
     enabled: bool
-    data: Dict[int, int] = None
+    data: Dict[int, int] = {}
     items: List[int]
     hash: UUID
 
-    class Config:
+    class db_config:
         title = "ModelTitle123"
         hash_key = "name"
         ttl = "expires"
@@ -49,13 +49,14 @@ class AliasKeyModel(BaseModel):
     name: str
     type_: str = Field(alias="type")
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def type_from_typ(cls, values):
         if 'typ' in values:
             values['type'] = values.pop('typ')
         return values
 
-    class Config:
+    class db_config:
         title = "AliasTitle123"
         hash_key = "name"
         backend = DynamoDbBackend
@@ -71,7 +72,7 @@ class ComplexKeyModel(BaseModel):
     thread_id: str
     body: str = "some random string"
 
-    class Config:
+    class db_config:
         title = "ComplexModelTitle123"
         hash_key = "account"
         range_key = "sort_date_key"
@@ -101,13 +102,12 @@ class NestedModel(BaseModel):
     ticket: Optional[Ticket]
     other: Union[Ticket, SomethingElse]
 
-    class Config:
+    class db_config:
         title = "NestedModelTitle123"
         hash_key = "account"
         range_key = "sort_date_key"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
-
 
 def alias_model_data_generator(**kwargs):
     data = dict(
@@ -231,7 +231,7 @@ def simple_query_data(simple_table):
     data = [datum for datum in [simple_model_data_generator(**i) for i in presets]]
     del data[0]["data"]  # We need to have no data to ensure that default values work
     for datum in data:
-        SimpleKeyModel.parse_obj(datum).save()
+        SimpleKeyModel.model_validate(datum).save()
     try:
         yield data
     finally:
@@ -250,12 +250,12 @@ def complex_query_data(complex_table):
         for i, p in enumerate(presets)
     ]
     for datum in data:
-        ComplexKeyModel.parse_obj(datum).save()
+        ComplexKeyModel.model_validate(datum).save()
     try:
         yield data
     finally:
         for datum in data:
-            ComplexKeyModel.delete((datum[ComplexKeyModel.Config.hash_key], datum[ComplexKeyModel.Config.range_key]))
+            ComplexKeyModel.delete((datum[ComplexKeyModel.db_config.hash_key], datum[getattr(ComplexKeyModel.db_config, "range_key")]))
 
 
 @pytest.fixture(scope="module")
@@ -263,7 +263,7 @@ def alias_query_data(alias_table):
     presets = [dict(name="Jerry"), dict(name="Hermione"), dict(), dict(), dict()]
     data = [datum for datum in [alias_model_data_generator(**i) for i in presets]]
     for datum in data:
-        AliasKeyModel.parse_obj(datum).save()
+        AliasKeyModel.model_validate(datum).save()
     try:
         yield data
     finally:
@@ -276,13 +276,13 @@ def nested_query_data(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(**i) for i in presets]]
     for datum in data:
-        nested_datum = NestedModel.parse_obj(datum)
+        nested_datum = NestedModel.model_validate(datum)
         nested_datum.save()
     try:
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
+            NestedModel.delete((datum[NestedModel.db_config.hash_key], datum[NestedModel.db_config.range_key]))
 
 
 @pytest.fixture
@@ -290,21 +290,21 @@ def nested_query_data_empty_ticket(nested_table):
     presets = [dict()] * 5
     data = [datum for datum in [nested_model_data_generator(include_ticket=False, **i) for i in presets]]
     for datum in data:
-        NestedModel.parse_obj(datum).save()
+        NestedModel.model_validate(datum).save()
     try:
         yield data
     finally:
         for datum in data:
-            NestedModel.delete((datum[NestedModel.Config.hash_key], datum[NestedModel.Config.range_key]))
+            NestedModel.delete((datum[NestedModel.db_config.hash_key], datum[NestedModel.db_config.range_key]))
 
 
 def test_save_get_delete_simple(dynamo, simple_table):
     data = simple_model_data_generator()
-    a = SimpleKeyModel.parse_obj(data)
+    a = SimpleKeyModel.model_validate(data)
     a.save()
     try:
         b = SimpleKeyModel.get(data["name"])
-        assert b.dict() == a.dict()
+        assert b.dict() == a.model_dump()
     finally:
         SimpleKeyModel.delete(data["name"])
 
@@ -330,7 +330,7 @@ def test_save_ttl_field_is_float(dynamo, simple_query_data):
 def test_query_with_hash_key_simple(dynamo, simple_query_data):
     res = SimpleKeyModel.query(Rule(f"name == '{simple_query_data[0]['name']}'"))
     res_data = {m.name: m.dict() for m in res}
-    simple_query_data[0]["data"] = None  # This is a default value and should be populated as such
+    simple_query_data[0]["data"] = {}  # This is a default value and should be populated as such
     assert res_data == {simple_query_data[0]["name"]: simple_query_data[0]}
 
 
@@ -383,11 +383,11 @@ def test_query_scan_contains_simple(dynamo, simple_query_data):
 
 def test_save_get_delete_complex(dynamo, complex_table):
     data = complex_model_data_generator()
-    a = ComplexKeyModel.parse_obj(data)
+    a = ComplexKeyModel.model_validate(data)
     a.save()
     try:
         b = ComplexKeyModel.get((data["account"], data["sort_date_key"]))
-        assert b.dict() == a.dict()
+        assert b.dict() == a.model_dump()
     finally:
         ComplexKeyModel.delete((data["account"], data["sort_date_key"]))
 
@@ -528,7 +528,7 @@ def test_query_alias_save(dynamo):
     AliasKeyModel.initialize()
     try:
         for datum in data:
-            AliasKeyModel.parse_obj(datum).save()
+            AliasKeyModel.model_validate(datum).save()
     except Exception as e:
         raise pytest.fail("Failed to save Alias model!")
 
@@ -567,7 +567,7 @@ def test_alias_model_validator_ingest(dynamo):
 
 def test_batch_write(dynamo, complex_table):
     response = {"UnprocessedItems": {}}
-    data = [ComplexKeyModel.parse_obj(complex_model_data_generator()) for x in range(0, 10)]
+    data = [ComplexKeyModel.model_validate(complex_model_data_generator()) for x in range(0, 10)]
     un_proc = ComplexKeyModel.batch_save(data)
     assert un_proc == response["UnprocessedItems"]
     res_get = ComplexKeyModel.get((data[0].account, data[0].sort_date_key))
@@ -581,7 +581,7 @@ def test_batch_write(dynamo, complex_table):
 
 def test_message_batch_write_client_exception(dynamo, complex_table):
     data = [
-        ComplexKeyModel.parse_obj(complex_model_data_generator(body="some big string" * 10000))
+        ComplexKeyModel.model_validate(complex_model_data_generator(body="some big string" * 10000))
         for x in range(0, 2)
     ]
     with pytest.raises(ClientError) as exc:
