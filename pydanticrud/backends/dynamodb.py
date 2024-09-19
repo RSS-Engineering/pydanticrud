@@ -102,7 +102,7 @@ DESERIALIZE_MAP = {
 
 def chunk_list(lst, size):
     for i in range(0, len(lst), size):
-        yield lst[i: i + size]
+        yield lst[i : i + size]
 
 
 def index_definition(index_name, keys, gsi=False):
@@ -143,6 +143,7 @@ class DynamoSerializer:
                 t = definition_signature.split("/")[-1]
                 return self.definitions[t]
             return definition_signature
+
         type_dicts = [type_from_definition(t) for t in possible_types]
 
         return set([(t["type"], t.get("format", "")) for t in type_dicts])
