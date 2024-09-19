@@ -1,5 +1,6 @@
 # PydantiCRUD
 
+
 Supercharge your Pydantic models with CRUD methods and a pluggable backend
 
 pydanticrud let's you add a few details to your pydantic models to get basic
