@@ -22,7 +22,7 @@ class Model(BaseModel):
     total: float
 
     class db_config:
-        title = "ModelTitle123"
+        table_name = "ModelTitle123"
         backend = FalseBackend
 
 
@@ -57,4 +57,4 @@ def test_model_backend_query():
 
 
 def test_model_table_name_from_title():
-    assert Model.get_table_name() == Model.db_config.title.lower()
+    assert Model.get_table_name() == Model.db_config.table_name.lower()

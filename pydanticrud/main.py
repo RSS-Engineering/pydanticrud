@@ -1,3 +1,4 @@
+from warnings import warn
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic._internal._model_construction import ModelMetaclass
 
@@ -43,7 +44,12 @@ class BaseModel(PydanticBaseModel, metaclass=CrudMetaClass):
 
     @classmethod
     def get_table_name(cls) -> str:
-        return cls.db_config.title.lower()
+        warn("'title' has been renamed to 'table_name'.", DeprecationWarning)
+        return (
+            cls.db_config.table_name.lower()
+            if cls.db_config.table_name.lower()
+            else cls.db_config.title.lower()  # Will be deprecated
+        )
 
     @classmethod
     def exists(cls) -> bool:

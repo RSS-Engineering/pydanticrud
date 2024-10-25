@@ -35,7 +35,7 @@ class SimpleKeyModel(BaseModel):
     hash: UUID
 
     class db_config:
-        title = "ModelTitle123"
+        table_name = "ModelTitle123"
         hash_key = "name"
         ttl = "expires"
         backend = DynamoDbBackend
@@ -57,7 +57,7 @@ class AliasKeyModel(BaseModel):
         return values
 
     class db_config:
-        title = "AliasTitle123"
+        table_name = "AliasTitle123"
         hash_key = "name"
         backend = DynamoDbBackend
         endpoint = "http://localhost:18002"
@@ -73,7 +73,7 @@ class ComplexKeyModel(BaseModel):
     body: str = "some random string"
 
     class db_config:
-        title = "ComplexModelTitle123"
+        table_name = "ComplexModelTitle123"
         hash_key = "account"
         range_key = "sort_date_key"
         backend = DynamoDbBackend
@@ -103,7 +103,7 @@ class NestedModel(BaseModel):
     other: Union[Ticket, SomethingElse]
 
     class db_config:
-        title = "NestedModelTitle123"
+        table_name = "NestedModelTitle123"
         hash_key = "account"
         range_key = "sort_date_key"
         backend = DynamoDbBackend
