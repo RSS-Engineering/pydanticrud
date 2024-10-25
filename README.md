@@ -15,19 +15,19 @@ class User(BaseModel):
     id: int
     name: str
 
-    class Config:
-        title = 'User'
+    class db_config:
+        table_name = 'User'
         backend = DynamoDbBackend
         hash_key = 'id'
 ```
 
 First, use the `BaseModel` from `pydanticrud` instead of `pydantic`.
 
-Next add your backend to your model's `Config` class. PydantiCRUD is geared
+Next add your backend to your model's `db_config` class. PydantiCRUD is geared
 toward DynamoDB but provides SQLite for lighter-weight usage. You can provide
 your own if you like.
 
-Finally, add appropriate members to the `Config` class for the chosen backend.
+Finally, add appropriate members to the `db_config` class for the chosen backend.
 
 ## Methods
 
@@ -56,25 +56,26 @@ NOTE: Rule complexity is limited by the querying capabilities of the backend.
 ### DynamoDB
 
 `get(key: Union[Dict, Any])`
-  - `key` can be any of 3 types:
-  - 
-    - in the case of a single hash_key, a value of type that matches the hash_key
-    - in the case of a hash and range key, a tuple specifying the respective values
-    - a dictionary of the hash and range keys with their names and values. This method can pull for alternate indexes.
+
+- `key` can be any of 3 types:
+  - in the case of a single hash_key, a value of type that matches the hash_key
+  - in the case of a hash and range key, a tuple specifying the respective values
+  - a dictionary of the hash and range keys with their names and values. This method can pull for alternate indexes.
 
 `query(query_expr: Optional[Rule], filter_expr: Optional[Rule], limit: Optional[str], exclusive_start_key: Optional[tuple[Any]], order: str = 'asc'`
-  - Providing a `query_expr` parameter will try to apply the keys of the expression to an
+
+- Providing a `query_expr` parameter will try to apply the keys of the expression to an
   existing index.
-  - Providing a `filter_expr` parameter will filter the results of
+- Providing a `filter_expr` parameter will filter the results of
   a passed `query_expr` or run a dynamodb `scan` if no `query_expr` is passed.
-  - An empty call to `query()` will return the scan results (and be resource
+- An empty call to `query()` will return the scan results (and be resource
   intensive).
-  - Providing a `limit` parameter will limit the number of results. If more results remain, the returned dataset will have an `last_evaluated_key` property that can be passed to `exclusive_start_key` to continue with the next page.
-  - Providing `order='desc'` will return the result set in descending order. This is not available for query calls that "scan" dynamodb.
+- Providing a `limit` parameter will limit the number of results. If more results remain, the returned dataset will have an `last_evaluated_key` property that can be passed to `exclusive_start_key` to continue with the next page.
+- Providing `order='desc'` will return the result set in descending order. This is not available for query calls that "scan" dynamodb.
 
 `count(query_expr: Optional[Rule], exclusive_start_key: Optional[tuple[Any]], order: str = 'asc'`
-  - Same as `query` but returns an integer count as total. (When calling `query` with a limit, the count dynamodb returns is <= the limit you provide)
 
+- Same as `query` but returns an integer count as total. (When calling `query` with a limit, the count dynamodb returns is <= the limit you provide)
 
 ## Backend Configuration Members
 

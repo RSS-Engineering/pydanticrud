@@ -20,7 +20,7 @@ class Model(BaseModel):
     items: List[int]
 
     class db_config:
-        title = "ModelTitle123"
+        table_name = "ModelTitle123"
         hash_key = "id"
         backend = SqliteBackend
         database = ":memory:"
