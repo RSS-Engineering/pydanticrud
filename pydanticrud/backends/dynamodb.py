@@ -72,7 +72,7 @@ DYNAMO_TYPE_MAP = {
 }
 
 
-def _to_epoch_decimal(dt: datetime | float) -> Decimal:
+def _to_epoch_decimal(dt: Union[datetime,  float]) -> Decimal:
     """TTL fields must be stored as a float but boto only supports decimals."""
     if type(dt) is datetime:
         val = dt.timestamp()
@@ -136,6 +136,7 @@ class DynamoSerializer:
             possible_types.extend([r.get("$ref", r) for r in field_properties["anyOf"]])
         else:
             possible_types.append(field_properties.get("$ref", field_properties))
+        print(field_properties.get("$ref"))
 
         def type_from_definition(definition_signature: Union[str, dict]) -> dict:
             if isinstance(definition_signature, str):
