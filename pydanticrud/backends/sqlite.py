@@ -166,7 +166,7 @@ class Backend:
         key = getattr(item, hash_key)
         fields = tuple(self._columns.keys())
 
-        item_data = item.dict()
+        item_data = item.model_dump()
         values = tuple([item_data[field] for field in fields])
         try:
             old_item = self.get(key)

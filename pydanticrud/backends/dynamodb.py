@@ -214,7 +214,7 @@ class Backend:
     def __init__(self, cls):
         cfg = cls.db_config
         self.cls = cls
-        self.schema = cls.schema()
+        self.schema = cls.model_json_schema()
         self.hash_key = cfg.hash_key
         self.range_key = getattr(cfg, "range_key", None)
         self.serializer = DynamoSerializer(self.schema, ttl_field=getattr(cfg, "ttl", None))
@@ -427,7 +427,7 @@ class Backend:
         return self.serializer.deserialize_record(resp["Item"])
 
     def save(self, item, condition: Optional[Rule] = None) -> bool:
-        data = self.serializer.serialize_record(item.dict(by_alias=True))
+        data = self.serializer.serialize_record(item.model_dump(by_alias=True))
 
         try:
             if condition:
@@ -462,7 +462,7 @@ class Backend:
         # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/dynamodb/client/batch_write_item.html#:~:text=The%20BatchWriteItem%20operation,Data%20Types.
         for chunk in chunk_list(items, 25):
             serialized_items = [
-                self.serializer.serialize_record(item.dict(by_alias=True)) for item in chunk
+                self.serializer.serialize_record(item.model_dump(by_alias=True)) for item in chunk
             ]
             for serialized_item in serialized_items:
                 request_items[self.table_name].append({"PutRequest": {"Item": serialized_item}})

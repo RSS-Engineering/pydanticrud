@@ -163,12 +163,14 @@ def nested_model_data_generator(include_ticket=True, **kwargs):
         expires=future_datetime(
             days=1, hours=random.randint(1, 12), minutes=random.randint(1, 58)
         ).isoformat(),
-        ticket={
-            "created_time": random_datetime().isoformat(),
-            "number": str(random.randint(0, 1000)),
-        }
-        if include_ticket
-        else None,
+        ticket=(
+            {
+                "created_time": random_datetime().isoformat(),
+                "number": str(random.randint(0, 1000)),
+            }
+            if include_ticket
+            else None
+        ),
         other=random.choice(
             [
                 {
@@ -321,7 +323,7 @@ def test_save_get_delete_simple(dynamo, simple_table):
     a.save()
     try:
         b = SimpleKeyModel.get(data["name"])
-        assert b.dict() == a.model_dump()
+        assert b.model_dump() == a.model_dump()
     finally:
         SimpleKeyModel.delete(data["name"])
 
@@ -349,7 +351,7 @@ def test_save_ttl_field_is_float(dynamo, simple_query_data):
 
 def test_query_with_hash_key_simple(dynamo, simple_query_data):
     res = SimpleKeyModel.query(Rule(f"name == '{simple_query_data[0]['name']}'"))
-    res_data = {m.name: m.dict() for m in res}
+    res_data = {m.name: m.model_dump() for m in res}
     simple_query_data[0]["data"] = {}  # This is a default value and should be populated as such
     assert res_data == {simple_query_data[0]["name"]: simple_query_data[0]}
 
@@ -375,7 +377,7 @@ def test_query_with_indexed_hash_key_simple(dynamo, simple_query_data):
     data_by_timestamp = simple_query_data[:]
     data_by_timestamp.sort(key=lambda d: d["timestamp"])
     res = SimpleKeyModel.query(Rule(f"id == {data_by_timestamp[0]['id']}"))
-    res_data = {m.name: m.dict() for m in res}
+    res_data = {m.name: m.model_dump() for m in res}
     assert res_data == {data_by_timestamp[0]["name"]: data_by_timestamp[0]}
 
 
@@ -402,13 +404,13 @@ def test_query_scan_simple(dynamo, simple_query_data):
     res = SimpleKeyModel.query(
         filter_expr=Rule(f"timestamp <= '{data_by_timestamp[2]['timestamp']}'")
     )
-    res_data = {m.name: m.dict() for m in res}
+    res_data = {m.name: m.model_dump() for m in res}
     assert res_data == {d["name"]: d for d in data_by_timestamp[:2]}
 
 
 def test_query_scan_contains_simple(dynamo, simple_query_data):
     res = SimpleKeyModel.query(filter_expr=Rule(f"'{simple_query_data[2]['items'][1]}' in items"))
-    res_data = {m.name: m.dict() for m in res}
+    res_data = {m.name: m.model_dump() for m in res}
     assert res_data == {simple_query_data[2]["name"]: simple_query_data[2]}
 
 
@@ -418,7 +420,7 @@ def test_save_get_delete_complex(dynamo, complex_table):
     a.save()
     try:
         b = ComplexKeyModel.get((data["account"], data["sort_date_key"]))
-        assert b.dict() == a.model_dump()
+        assert b.model_dump() == a.model_dump()
     finally:
         ComplexKeyModel.delete((data["account"], data["sort_date_key"]))
 
@@ -433,14 +435,14 @@ def test_query_with_hash_key_complex(dynamo, complex_query_data):
     res = ComplexKeyModel.query(
         Rule(f"account == '{record['account']}' and sort_date_key == '{record['sort_date_key']}'")
     )
-    res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
+    res_data = {(m.account, m.sort_date_key): m.model_dump() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
     # Check that it works regardless of query attribute order
     res = ComplexKeyModel.query(
         Rule(f"sort_date_key == '{record['sort_date_key']}' and account == '{record['account']}'")
     )
-    res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
+    res_data = {(m.account, m.sort_date_key): m.model_dump() for m in res}
     assert res_data == {(record["account"], record["sort_date_key"]): record}
 
 
@@ -561,13 +563,13 @@ def test_query_with_indexed_hash_key_complex(dynamo, complex_query_data):
     res = ComplexKeyModel.query(
         Rule(f"account == '{record['account']}' and thread_id == '{record['thread_id']}'")
     )
-    res_data = {(m.account, m.thread_id): m.dict() for m in res}
+    res_data = {(m.account, m.thread_id): m.model_dump() for m in res}
     assert res_data == {(record["account"], record["thread_id"]): record}
 
     res = ComplexKeyModel.query(
         Rule(f"thread_id == '{record['thread_id']}' and account == '{record['account']}'")
     )
-    res_data = {(m.account, m.thread_id): m.dict() for m in res}
+    res_data = {(m.account, m.thread_id): m.model_dump() for m in res}
     assert res_data == {(record["account"], record["thread_id"]): record}
 
 
@@ -575,7 +577,7 @@ def test_query_scan_complex(dynamo, complex_query_data):
     data_by_expires = complex_query_data[:]
     data_by_expires.sort(key=lambda d: d["expires"])
     res = ComplexKeyModel.query(filter_expr=Rule(f"expires <= '{data_by_expires[2]['expires']}'"))
-    res_data = {(m.account, m.sort_date_key): m.dict() for m in res}
+    res_data = {(m.account, m.sort_date_key): m.model_dump() for m in res}
     assert res_data == {(d["account"], d["sort_date_key"]): d for d in data_by_expires[:3]}
 
 
@@ -607,15 +609,15 @@ def test_query_alias_save(dynamo):
 def test_get_alias_model_data(dynamo, alias_query_data):
     data = alias_model_data_generator()
     res = AliasKeyModel.get(alias_query_data[0]["name"])
-    assert res.dict(by_alias=True) == alias_query_data[0]
+    assert res.model_dump(by_alias=True) == alias_query_data[0]
 
 
 def test_get_simple_model_data_via_index(dynamo, simple_query_data):
     data = simple_model_data_generator()
     res = SimpleKeyModel.get(simple_query_data[0]["name"])
-    assert res.dict(by_alias=True) == simple_query_data[0]
+    assert res.model_dump(by_alias=True) == simple_query_data[0]
     res = SimpleKeyModel.get({"id": simple_query_data[0]["id"]})
-    assert res.dict(by_alias=True) == simple_query_data[0]
+    assert res.model_dump(by_alias=True) == simple_query_data[0]
 
 
 def test_get_complex_model_data_via_index(dynamo, complex_query_data):
@@ -623,14 +625,14 @@ def test_get_complex_model_data_via_index(dynamo, complex_query_data):
     res = ComplexKeyModel.get(
         (complex_query_data[0]["account"], complex_query_data[0]["sort_date_key"])
     )
-    assert res.dict(by_alias=True) == complex_query_data[0]
+    assert res.model_dump(by_alias=True) == complex_query_data[0]
     res = ComplexKeyModel.get(
         {
             "account": complex_query_data[0]["account"],
             "notification_id": complex_query_data[0]["notification_id"],
         }
     )
-    assert res.dict(by_alias=True) == complex_query_data[0]
+    assert res.model_dump(by_alias=True) == complex_query_data[0]
 
 
 def test_alias_model_validator_ingest(dynamo):
