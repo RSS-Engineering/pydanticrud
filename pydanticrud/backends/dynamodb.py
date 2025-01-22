@@ -72,7 +72,7 @@ DYNAMO_TYPE_MAP = {
 }
 
 
-def _to_epoch_decimal(dt: datetime | float) -> Decimal:
+def _to_epoch_decimal(dt: Union[datetime,  float]) -> Decimal:
     """TTL fields must be stored as a float but boto only supports decimals."""
     if type(dt) is datetime:
         val = dt.timestamp()
