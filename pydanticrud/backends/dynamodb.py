@@ -71,15 +71,14 @@ DYNAMO_TYPE_MAP = {
     "bool": "BOOL",
 }
 
-EPOCH = datetime(1970, 1, 1, 0, 0)
 
-
-def _to_epoch_decimal(dt: datetime) -> Decimal:
+def _to_epoch_decimal(dt: Union[datetime,  float]) -> Decimal:
     """TTL fields must be stored as a float but boto only supports decimals."""
-    epock = EPOCH
-    if dt.tzinfo:
-        epock = epock.replace(tzinfo=timezone.utc)
-    return Decimal((dt - epock).total_seconds())
+    if type(dt) is datetime:
+        val = dt.timestamp()
+    else:
+        val = dt
+    return Decimal(val)
 
 
 SERIALIZE_MAP = {
